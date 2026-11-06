@@ -11,6 +11,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import de.nbeck.aapshc.GlucoseUnit
 import de.nbeck.aapshc.R
 import de.nbeck.aapshc.ui.MainActivity
 import java.time.Duration
@@ -39,18 +40,18 @@ object Notifier {
     }
 
     /** Text des Hypo-Hinweises; [history] sind frühere Trainings derselben Art (kann leer sein). */
-    fun hypoRiskText(exercise: ExerciseInfo, history: List<ExerciseGlucose>): String {
+    fun hypoRiskText(exercise: ExerciseInfo, history: List<ExerciseGlucose>, unit: GlucoseUnit = GlucoseUnit.MGDL): String {
         val minutes = Duration.between(exercise.start, exercise.end).toMinutes()
         val base = "${exercise.typeName}, $minutes min. Die Insulinempfindlichkeit kann bis in die Nacht erhöht sein."
         val withHypo = history.count { it.hypoAfter }
         val stats = if (history.size >= 3) {
-            " Nach $withHypo von ${history.size} ähnlichen Trainings lag die Glukose in den 12 h danach unter ${Analysis.HYPO_MGDL} mg/dl."
+            " Nach $withHypo von ${history.size} ähnlichen Trainings lag die Glukose in den 12 h danach unter ${unit.withUnit(Analysis.HYPO_MGDL)}."
         } else ""
         return base + stats + " Denk z. B. an ein höheres temporäres Ziel in AAPS."
     }
 
     fun hypoRisk(context: Context, exercise: ExerciseInfo, history: List<ExerciseGlucose>) {
-        val text = hypoRiskText(exercise, history)
+        val text = hypoRiskText(exercise, history, de.nbeck.aapshc.Settings(context).glucoseUnit)
         notify(
             context, exercise.recordId.hashCode(),
             NotificationCompat.Builder(context, CHANNEL_HYPO)

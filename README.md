@@ -24,6 +24,9 @@ Dazu eine Auswertung, wie sich Sport und Nächte auf deine Glukose auswirken.
   <img src="docs/screenshots/exercises.png" width="250" alt="Einzelne Trainings mit Glukosekurve">
   <img src="docs/screenshots/settings.png" width="250" alt="Einstellungen: was übertragen wird">
 </p>
+<p align="center">
+  <img src="docs/screenshots/report.png" width="380" alt="PDF-Bericht für die Sprechstunde, erste Seite">
+</p>
 <p align="center"><sub>Screenshots mit erfundenen Demo-Daten.</sub></p>
 
 ## Inhalt
@@ -44,7 +47,7 @@ Dazu eine Auswertung, wie sich Sport und Nächte auf deine Glukose auswirken.
 **Sync nach Nightscout/AAPS**
 - Trainings mit Distanz, Kalorien, Ø/max Puls, Schritten und Pulszonen
 - Schlaf mit Dauer und Schlafphasen
-- optional Tagesschritte, Fieber ab 37,5 °C und Periode
+- optional Tagesschritte, Fieber ab 37,5 °C, Periode und ein Infekt-Hinweis bei auffälligem Ruhepuls/HRV
 - doppelte Einträge mehrerer Apps (z. B. Garmin und Samsung Health) werden zusammengeführt
 - alle 15 min im Hintergrund, optional nur über WLAN und/oder nur beim Laden; Kachel in den Schnelleinstellungen
 
@@ -52,11 +55,14 @@ Dazu eine Auswertung, wie sich Sport und Nächte auf deine Glukose auswirken.
 - Zeit im Zielbereich je Nacht, Nachtprofil (AGP-ähnlich), Sport und Glukose
 - Hypo-Episoden nach internationalem Konsens, Erkennung von Kompressions-Tiefs
 - „Was vor Hypo-Nächten anders war“: Sport, später Bolus, temporäres Ziel, Insulin am Abend
-- Schlafqualität und Glukose, Uhrzeit des Trainings, CSV-Export für die Sprechstunde
+- „Wirkt das temporäre Ziel?“ – Nächte nach Sport mit und ohne geplantes Ziel
+- Schlafqualität, Uhrzeit des Trainings, Ruhepuls und HRV
+- **PDF-Bericht** und CSV-Export für die Sprechstunde, Anzeige wahlweise in mg/dl oder mmol/l
 
 **Hinweise** (nur Benachrichtigungen, nie Eingriffe)
 - vor dem Schlafengehen, wenn der Abend früheren Hypo-Nächten ähnelt
 - nach langem Training, Wochenbericht, Sync-Fehler
+- **Widget** für den Startbildschirm: letzte Nacht im Ziel, Hypo-Episoden, letzter Sync
 
 ## Datenschutz
 
@@ -117,6 +123,7 @@ Unter **Admin-Werkzeuge** in deinem Nightscout:
 | Tagesschritte *(optional)* | `Note` am Tagesende – „Schritte 05.11.: 9.842“ | Notiz |
 | Körpertemperatur ≥ 37,5 °C *(optional)* | `Note` – „Erhöhte Temperatur 38,2 °C (Ohr) – Insulinbedarf kann steigen“ | Notiz |
 | Periode *(optional)* | `Note` mit Dauer – „Periode, Tag 1–5“ | Notiz |
+| Ruhepuls und HRV *(optional)* | `Note` nur bei deutlicher Abweichung – „Ruhepuls erhöht: 62 bpm (sonst 54) · HRV 29 ms (sonst 44) – möglicher Infekt, Insulinbedarf kann steigen“ | Notiz |
 
 Puls, Distanz und Schritte stehen **in der Trainingsnotiz**: Als eigene Messreihen liest AAPS 4 sie nicht aus
 Nightscout (nur von Wear OS bzw. Garmin direkt).
@@ -132,11 +139,16 @@ Tab **Auswertung**, Zeitraum 14, 30 oder 90 Tage. Diagramme lassen sich antippen
 | Nachtprofil | alle Nächte ab dem Einschlafen übereinander – Median und mittlere 50 % |
 | Wann nachts Hypos beginnen | Histogramm nach Uhrzeit, Kompressions-Verdacht getrennt |
 | Was vor Hypo-Nächten anders war | Nächte mit echter Hypo gegen übrige: Sport, Bolus < 3 h vor dem Schlafen, temporäres Ziel, Insulin und Kohlenhydrate am Abend |
+| Wirkt das temporäre Ziel? | Nächte nach Sport mit und ohne **geplantes** Ziel (z. B. „Activity“); Ziele aus Automationen oder wegen Hypo bleiben außen vor |
 | Nächte mit und ohne Sport | Training in den 12 h vor dem Einschlafen im Vergleich |
 | Schlafqualität | Tiefschlaf-Anteil gegen Ø Nachtglukose |
 | Uhrzeit des Trainings | Anteil mit Hypo in den 12 h danach, morgens/mittags/abends/spät |
+| Ruhepuls und HRV | Verlauf je Tag, auffällige Tage markiert, Nächte danach im Vergleich |
 | Einzelne Trainings und Nächte | kleine Glukosekurve, bei Nächten mit dem Abend davor |
+| PDF-Bericht | zwei A4-Seiten für die Sprechstunde: Kennzahlen, Zeit im Ziel je Nacht, Nachtprofil, Hypo-Uhrzeiten, Vergleiche, Nachtliste |
 | CSV-Export | alle Werte als Tabelle (Semikolon, UTF-8), öffnet direkt in Excel/LibreOffice |
+
+Glukose wird wahlweise in **mg/dl oder mmol/l** angezeigt (Einstellung „Anzeige“); intern rechnet die App in mg/dl wie Nightscout.
 
 **Definitionen**
 - **Hypo-Episode:** mindestens 15 min durchgehend unter 70 mg/dl (internationaler Konsens). Einzelne Ausreißer zählen nicht.
@@ -144,6 +156,9 @@ Tab **Auswertung**, Zeitraum 14, 30 oder 90 Tage. Diagramme lassen sich antippen
   keine Kohlenhydrate in der Zeit – typisch für Liegen auf dem Sensor. Solche Tiefs bleiben sichtbar, zählen aber
   nicht für Vergleiche und Hinweise.
 - **Abend:** die 6 h vor dem Einschlafen. **Später Bolus:** selbst ausgelöst (kein SMB), weniger als 3 h vor dem Einschlafen.
+- **Geplantes Ziel:** temporäres Ziel ohne den Grund „Automation“ oder „Hypo“ – diese sind eine Reaktion auf fallende Werte.
+- **Auffälliger Tag (Ruhepuls/HRV):** Ruhepuls mindestens 5 bpm über dem Median der 14 Tage davor, oder mindestens 3 bpm
+  darüber zusammen mit HRV ≤ 75 % des Normalwerts oder Fieber.
 
 Die Auswertung zeigt **Häufungen, keine Ursachen.** Ein temporäres Ziel, das eine AAPS-Automation bei fallender
 Glukose setzt, taucht zum Beispiel gehäuft in Hypo-Nächten auf – als Reaktion, nicht als Auslöser.
@@ -210,8 +225,11 @@ Für eigene Release-Builds einen eigenen Signaturschlüssel verwenden.
 gespeichert oder synchronisiert):
 
 ```bash
-adb shell am start -n de.nbeck.aapshc/.ui.MainActivity --ez demo true --ei tab 1
+adb shell am start -S -n de.nbeck.aapshc/.ui.MainActivity --ez demo true --ei tab 1
 ```
+
+Mit `--ez pdf true` schreibt der Demo-Modus zusätzlich einen Beispiel-Bericht nach `cache/demo-bericht.pdf`
+(abholen mit `adb exec-out run-as de.nbeck.aapshc cat cache/demo-bericht.pdf > bericht.pdf`).
 
 **Aufbau**
 

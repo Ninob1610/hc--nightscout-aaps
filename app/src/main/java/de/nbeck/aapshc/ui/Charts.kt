@@ -56,6 +56,7 @@ data class RangeShare(val label: String, val below: Int, val inRange: Int, val a
 @Composable
 fun RangeBarChart(nights: List<RangeShare>, modifier: Modifier = Modifier) {
     val c = LocalChartColors.current
+    val u = LocalGlucoseUnit.current
     val surface = MaterialTheme.colorScheme.surfaceContainerLow
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
     val measurer = rememberTextMeasurer()
@@ -63,7 +64,7 @@ fun RangeBarChart(nights: List<RangeShare>, modifier: Modifier = Modifier) {
     Column(modifier) {
         val n = nights.getOrNull(selected)
         Text(
-            n?.let { "${it.label}: ${it.inRange} % im Ziel · ${it.below} % unter 70 · ${it.above} % über 180" } ?: "",
+            n?.let { "${it.label}: ${it.inRange} % im Ziel · ${it.below} % unter ${u.low} · ${it.above} % über ${u.high}" } ?: "",
             style = MaterialTheme.typography.labelLarge,
         )
         Canvas(
@@ -112,7 +113,7 @@ fun RangeBarChart(nights: List<RangeShare>, modifier: Modifier = Modifier) {
             }
             }
         }
-        Legend(listOf(c.below to "unter 70", c.inRange to "70–180", c.above to "über 180"))
+        Legend(listOf(c.below to "unter ${u.low}", c.inRange to u.range, c.above to "über ${u.high}"))
     }
 }
 
@@ -120,6 +121,7 @@ fun RangeBarChart(nights: List<RangeShare>, modifier: Modifier = Modifier) {
 @Composable
 fun NightProfileChart(points: List<NightAnalysis.ProfilePoint>, modifier: Modifier = Modifier) {
     val c = LocalChartColors.current
+    val u = LocalGlucoseUnit.current
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
     val measurer = rememberTextMeasurer()
     var selected by remember(points) { mutableStateOf<Int?>(null) }
@@ -129,7 +131,7 @@ fun NightProfileChart(points: List<NightAnalysis.ProfilePoint>, modifier: Modifi
     Column(modifier) {
         val p = selected?.let { points.getOrNull(it) }
         Text(
-            p?.let { "Nach ${hm(it.minute)}: Median ${it.median} mg/dl (50 % zwischen ${it.p25} und ${it.p75}, ${it.nights} Nächte)" }
+            p?.let { "Nach ${hm(it.minute)}: Median ${u.withUnit(it.median)} (50 % zwischen ${u.value(it.p25)} und ${u.value(it.p75)}, ${it.nights} Nächte)" }
                 ?: "Tippe auf das Diagramm für Werte",
             style = MaterialTheme.typography.labelLarge,
         )
@@ -154,7 +156,7 @@ fun NightProfileChart(points: List<NightAnalysis.ProfilePoint>, modifier: Modifi
             drawRect(c.targetBand, Offset(axis, y(180)), Size(size.width - axis, y(70) - y(180)))
             for (v in listOf(70, 180, 250)) {
                 drawLine(c.grid, Offset(axis, y(v)), Offset(size.width, y(v)), 1.dp.toPx())
-                label(measurer, "$v", Offset(0f, y(v) - 7.sp.toPx()), textColor)
+                label(measurer, u.value(v), Offset(0f, y(v) - 7.sp.toPx()), textColor)
             }
             for (hour in 0..maxMinute / 60 step 2) {
                 label(measurer, "$hour h", Offset(x(hour * 60) - 6.dp.toPx(), h + 2.dp.toPx()), textColor)
@@ -177,7 +179,7 @@ fun NightProfileChart(points: List<NightAnalysis.ProfilePoint>, modifier: Modifi
                 dot(Offset(x(it.minute), y(it.median)), c.series)
             }
         }
-        Legend(listOf(c.series to "Median", bandColor to "mittlere 50 %", c.targetBand to "Ziel 70–180"))
+        Legend(listOf(c.series to "Median", bandColor to "mittlere 50 %", c.targetBand to "Ziel ${u.range}"))
     }
 }
 
@@ -212,6 +214,7 @@ fun ScatterChart(
     modifier: Modifier = Modifier,
 ) {
     val c = LocalChartColors.current
+    val u = LocalGlucoseUnit.current
     val textColor = MaterialTheme.colorScheme.onSurfaceVariant
     val surface = MaterialTheme.colorScheme.surfaceContainerLow
     val measurer = rememberTextMeasurer()
@@ -229,24 +232,26 @@ fun ScatterChart(
                 .pointerInput(points) {
                     detectTapGestures { pos ->
                         val axis = AXIS_WIDTH.toPx()
-                        val h = size.height - 16.dp.toPx()
+                        val inset = 10.dp.toPx()
+                        val h = size.height - 16.dp.toPx() - inset
                         selected = points.indices.minByOrNull { i ->
                             val px = axis + (size.width - axis) * points[i].first / xMax
-                            val py = h - h * (points[i].second - yMin) / (yMax - yMin).toFloat()
+                            val py = inset + h - h * (points[i].second - yMin) / (yMax - yMin).toFloat()
                             (px - pos.x) * (px - pos.x) + (py - pos.y) * (py - pos.y)
                         }
                     }
                 },
         ) {
             val axis = AXIS_WIDTH.toPx()
-            val h = size.height - 16.dp.toPx()
+            val inset = 10.dp.toPx() // Platz für die obere Achsenbeschriftung
+            val h = size.height - 16.dp.toPx() - inset
             fun x(v: Int) = axis + (size.width - axis) * v / xMax
-            fun y(v: Int) = h - h * (v - yMin) / (yMax - yMin).toFloat()
+            fun y(v: Int) = inset + h - h * (v - yMin) / (yMax - yMin).toFloat()
             for (v in listOf(yMin, (yMin + yMax) / 2, yMax)) {
                 drawLine(c.grid, Offset(axis, y(v)), Offset(size.width, y(v)), 1.dp.toPx())
-                label(measurer, "$v", Offset(0f, y(v) - 7.sp.toPx()), textColor)
+                label(measurer, u.value(v), Offset(0f, y(v) - 7.sp.toPx()), textColor)
             }
-            for (v in 0..xMax step 10) label(measurer, "$v %", Offset(x(v) - 8.dp.toPx(), h + 2.dp.toPx()), textColor)
+            for (v in 0..xMax step 10) label(measurer, "$v %", Offset(x(v) - 8.dp.toPx(), inset + h + 2.dp.toPx()), textColor)
             points.forEachIndexed { i, (px, py) ->
                 // 2 dp Ring in Flächenfarbe, damit sich überlappende Punkte trennen.
                 drawCircle(surface, 6.dp.toPx(), Offset(x(px), y(py)))
@@ -402,5 +407,62 @@ fun PairedPercentBars(rows: List<Triple<String, Int, Int>>, modifier: Modifier =
             }
         }
         Legend(listOf(c.below to "Nächte mit Hypo", c.inRange to "übrige Nächte"))
+    }
+}
+
+/** Ruhepuls je Tag als Linie; auffällige Tage als größere Punkte in Warnfarbe. */
+@Composable
+fun VitalsChart(days: List<de.nbeck.aapshc.sync.DailyVitals>, alerts: Set<java.time.LocalDate>, modifier: Modifier = Modifier) {
+    val c = LocalChartColors.current
+    val textColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val surface = MaterialTheme.colorScheme.surfaceContainerLow
+    val measurer = rememberTextMeasurer()
+    val points = days.filter { it.restingHr != null }
+    var selected by remember(points) { mutableStateOf<Int?>(null) }
+    val fmt = java.time.format.DateTimeFormatter.ofPattern("dd.MM.")
+    val lo = ((points.minOfOrNull { it.restingHr!! } ?: 50.0) - 3).toInt()
+    val hi = ((points.maxOfOrNull { it.restingHr!! } ?: 70.0) + 3).toInt()
+    Column(modifier) {
+        Text(
+            selected?.let { points.getOrNull(it) }?.let { d ->
+                "${d.day.format(fmt)}: Ruhepuls ${d.restingHr!!.toInt()} bpm" + (d.hrvMs?.let { " · HRV ${it.toInt()} ms" } ?: "")
+            } ?: "Tippe auf einen Tag",
+            style = MaterialTheme.typography.labelLarge,
+        )
+        Canvas(
+            Modifier
+                .fillMaxWidth()
+                .height(120.dp)
+                .semantics { contentDescription = "Ruhepuls je Tag" }
+                .pointerInput(points) {
+                    detectTapGestures { pos ->
+                        val axis = AXIS_WIDTH.toPx()
+                        val step = (size.width - axis) / (points.size - 1).coerceAtLeast(1)
+                        selected = ((pos.x - axis) / step).let { kotlin.math.round(it).toInt() }.coerceIn(0, (points.size - 1).coerceAtLeast(0))
+                    }
+                },
+        ) {
+            if (points.size < 2) return@Canvas
+            val axis = AXIS_WIDTH.toPx()
+            val h = size.height - 6.dp.toPx()
+            fun x(i: Int) = axis + (size.width - axis) * i / (points.size - 1)
+            fun y(v: Double) = 6.dp.toPx() + (h - 6.dp.toPx()) * (1 - ((v - lo) / (hi - lo)).toFloat())
+            for (v in listOf(lo, hi)) {
+                drawLine(c.grid, Offset(axis, y(v.toDouble())), Offset(size.width, y(v.toDouble())), 1.dp.toPx())
+                label(measurer, "$v", Offset(0f, y(v.toDouble()) - 7.sp.toPx()), textColor)
+            }
+            val path = Path().apply {
+                points.forEachIndexed { i, d -> if (i == 0) moveTo(x(i), y(d.restingHr!!)) else lineTo(x(i), y(d.restingHr!!)) }
+            }
+            drawPath(path, c.series, style = Stroke(2.dp.toPx(), cap = StrokeCap.Round))
+            points.forEachIndexed { i, d ->
+                if (d.day in alerts) {
+                    drawCircle(surface, 7.dp.toPx(), Offset(x(i), y(d.restingHr!!)))
+                    drawCircle(c.above, 5.dp.toPx(), Offset(x(i), y(d.restingHr)))
+                }
+                if (i == selected) drawCircle(c.series, 4.dp.toPx(), Offset(x(i), y(d.restingHr!!)))
+            }
+        }
+        Legend(listOf(c.series to "Ruhepuls (bpm)", c.above to "auffälliger Tag"))
     }
 }

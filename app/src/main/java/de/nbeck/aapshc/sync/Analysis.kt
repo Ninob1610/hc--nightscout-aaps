@@ -347,18 +347,19 @@ object NightAnalysis {
         return WeekSummary(
             nights = usable.size,
             avgTimeInRange = usable.mapNotNull { it.timeInRange }.takeIf { it.isNotEmpty() }?.average()?.toInt(),
-            hypoNights = usable.count { it.hadHypo },
+            hypoNights = usable.count { it.hadRealHypo },
             exerciseMinutes = exercises.sumOf { Duration.between(it.start, it.end).toMinutes() },
             exerciseSessions = exercises.size,
         )
     }
 
-    private fun summary(label: String, list: List<NightGlucose>) = NightSummary(
+    /** Zusammenfassung einer Gruppe von Nächten; Hypo-Nächte ohne reine Kompressions-Tiefs. */
+    internal fun summary(label: String, list: List<NightGlucose>) = NightSummary(
         label = label,
         nights = list.size,
         avgTimeInRange = list.mapNotNull { it.timeInRange }.takeIf { it.isNotEmpty() }?.average()?.toInt(),
         avgMin = list.mapNotNull { it.min }.takeIf { it.isNotEmpty() }?.average()?.toInt(),
-        hypoNights = list.count { it.hadHypo },
+        hypoNights = list.count { it.hadRealHypo },
         avgDawnRise = list.mapNotNull { it.dawnRise }.takeIf { it.isNotEmpty() }?.average()?.toInt(),
     )
 

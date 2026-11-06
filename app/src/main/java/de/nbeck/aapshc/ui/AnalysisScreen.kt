@@ -20,6 +20,8 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
@@ -53,6 +55,9 @@ fun AnalysisScreen(s: UiState, vm: MainViewModel, modifier: Modifier) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         uri?.let(vm::exportCsv)
     }
+    val pdfLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/pdf")) { uri ->
+        uri?.let(vm::exportPdf)
+    }
     Column(
         modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -69,6 +74,9 @@ fun AnalysisScreen(s: UiState, vm: MainViewModel, modifier: Modifier) {
             }
             Spacer(Modifier.weight(1f))
             if (s.analysis != null) {
+                IconButton(onClick = { pdfLauncher.launch("bericht-${LocalDate.now()}.pdf") }) {
+                    Icon(Icons.Filled.PictureAsPdf, contentDescription = "PDF-Bericht für die Sprechstunde")
+                }
                 IconButton(onClick = { exportLauncher.launch("auswertung-${LocalDate.now()}.csv") }) {
                     Icon(Icons.Filled.Download, contentDescription = "Als CSV exportieren")
                 }
@@ -106,6 +114,7 @@ fun AnalysisScreen(s: UiState, vm: MainViewModel, modifier: Modifier) {
             if (report.nightProfile.size >= 2) NightProfileCard(report)
             if (report.hypoHours.isNotEmpty()) HypoHoursCard(report)
             FactorsCard(report)
+            report.targetEffect?.let { TargetEffectCard(it) }
             NightComparisonCard(report)
             SleepQualityCard(report)
         }
@@ -114,10 +123,11 @@ fun AnalysisScreen(s: UiState, vm: MainViewModel, modifier: Modifier) {
             ExerciseTypesCard(report)
             ExerciseListCard(report.items)
         }
+        if (report.vitals.count { it.restingHr != null } >= 5) VitalsCard(report)
         if (report.nights.isNotEmpty()) NightListCard(report.nights)
         Banner(
             "Auswertung zur eigenen Orientierung, kein Medizinprodukt. Muster gern mit dem Diabetes-Team besprechen – " +
-                "dafür gibt es oben den CSV-Export.",
+                "dafür gibt es oben den PDF-Bericht und den CSV-Export.",
             isError = false, icon = Icons.Filled.Info,
         )
         Spacer(Modifier.size(8.dp))
@@ -134,7 +144,7 @@ private fun Overview(r: AnalysisReport) {
         val compressionOnly = usable.count { it.hadHypo && !it.hadRealHypo }
         StatTile(
             "${usable.count { it.hadHypo }}", "Hypo-Nächte", Modifier.weight(1f),
-            if (compressionOnly > 0) "davon $compressionOnly nur Kompr." else "≥ 15 min unter 70",
+            if (compressionOnly > 0) "davon $compressionOnly nur Kompr." else "≥ 15 min unter ${LocalGlucoseUnit.current.low}",
         )
         StatTile(hm(sportMinutes), "Sport", Modifier.weight(1f), "${r.items.size} Einheiten")
     }
@@ -214,6 +224,46 @@ private fun FactorsCard(r: AnalysisReport) {
 }
 
 @Composable
+private fun VitalsCard(r: AnalysisReport) {
+    val fmt = java.time.format.DateTimeFormatter.ofPattern("dd.MM.")
+    SectionCard(
+        "Ruhepuls und HRV", Icons.Filled.MonitorHeart,
+        subtitle = "${r.vitalsAlerts.size} auffällige Tage (Ruhepuls deutlich über dem eigenen Normalwert)",
+    ) {
+        VitalsChart(r.vitals, r.vitalsAlerts.map { it.day }.toSet())
+        r.vitalsAlerts.takeLast(5).reversed().forEach { a ->
+            Text(
+                "${a.day.format(fmt)}: Ruhepuls ${a.restingHr} (sonst ${a.baselineHr})" +
+                    (if (a.hrvMs != null && a.baselineHrv != null) " · HRV ${a.hrvMs} ms (sonst ${a.baselineHrv})" else "") +
+                    (if (a.fever) " · Fieber" else ""),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        val cmp = r.nightsAfterAlerts()
+        if (cmp.isNotEmpty()) {
+            HorizontalDivider()
+            SummaryRows(cmp)
+        }
+    }
+}
+
+@Composable
+private fun TargetEffectCard(effect: de.nbeck.aapshc.sync.NightFactors.TargetEffect) {
+    SectionCard(
+        "Wirkt das temporäre Ziel?", Icons.Filled.Insights,
+        subtitle = if (effect.afterSport) "Nächte nach Sport mit und ohne geplantes Ziel" else "Nächte mit und ohne geplantes Ziel",
+    ) {
+        SummaryRows(effect.groups)
+        Text(
+            "Gewertet werden geplante Ziele (z. B. „Activity“). " +
+                (if (effect.reactiveNights > 0) "${effect.reactiveNights} Nächte mit Ziel aus Automation oder wegen Hypo bleiben außen vor – " +
+                    "dort ist das Ziel eine Reaktion auf fallende Werte." else ""),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 private fun NightComparisonCard(r: AnalysisReport) {
     SectionCard("Nächte mit und ohne Sport", Icons.Filled.DirectionsRun, subtitle = "Training in den 12 h vor dem Einschlafen") {
         val groups = r.nightSummaries.filter { it.label != "Alle Nächte" }
@@ -230,16 +280,17 @@ private fun NightComparisonCard(r: AnalysisReport) {
 
 @Composable
 private fun SleepQualityCard(r: AnalysisReport) {
+    val u = LocalGlucoseUnit.current
     val points = r.nights.filter { it.values >= 12 && it.deepPercent != null && it.avg != null }
     if (points.size < 4) return
     val fmt = DateFormat.getDateInstance(DateFormat.SHORT)
     SectionCard("Schlafqualität und Glukose", Icons.Filled.Bedtime, subtitle = "Tiefschlaf-Anteil gegen Ø Glukose der Nacht") {
         ScatterChart(
             points.map { it.deepPercent!! to it.avg!! },
-            xLabel = "Tiefschlaf-Anteil · Ø Glukose in mg/dl",
+            xLabel = "Tiefschlaf-Anteil · Ø Glukose in ${u.label}",
             describe = { (x, y) ->
                 val n = points.first { it.deepPercent == x && it.avg == y }
-                "${fmt.format(Date(n.start.toEpochMilli()))}: $x % Tiefschlaf, Ø $y mg/dl"
+                "${fmt.format(Date(n.start.toEpochMilli()))}: $x % Tiefschlaf, Ø ${u.withUnit(y)}"
             },
         )
         if (r.deepSleep.isNotEmpty()) {
@@ -251,15 +302,16 @@ private fun SleepQualityCard(r: AnalysisReport) {
 
 @Composable
 private fun SummaryRows(rows: List<de.nbeck.aapshc.sync.NightSummary>) {
+    val u = LocalGlucoseUnit.current
     rows.forEach { n ->
         Column {
             Text("${n.label} · ${n.nights} Nächte", style = MaterialTheme.typography.titleSmall)
             Text(
                 buildList {
                     n.avgTimeInRange?.let { add("im Ziel Ø $it %") }
-                    n.avgMin?.let { add("Tiefstwert Ø $it") }
+                    n.avgMin?.let { add("Tiefstwert Ø ${u.value(it)}") }
                     add("Hypo-Nächte ${n.hypoNights}")
-                    n.avgDawnRise?.let { add("morgens Ø ${signed(it)}") }
+                    n.avgDawnRise?.let { add("morgens Ø ${u.delta(it)}") }
                 }.joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -282,13 +334,14 @@ private fun TimeOfDayCard(r: AnalysisReport) {
 
 @Composable
 private fun ExerciseTypesCard(r: AnalysisReport) {
+    val u = LocalGlucoseUnit.current
     SectionCard("Nach Trainingsart", Icons.Filled.DirectionsRun) {
         r.summaries.forEach { t ->
             Column {
                 Text("${t.typeName} · ${t.count}×", style = MaterialTheme.typography.titleSmall)
                 Text(
                     buildList {
-                        t.avgChangeDuring?.let { add("Ø ${signed(it)} mg/dl während") }
+                        t.avgChangeDuring?.let { add("Ø ${u.delta(it)} ${u.label} während") }
                         add("Hypo danach ${t.hypoAfterCount}×")
                         if (t.hypoDuringCount > 0) add("währenddessen ${t.hypoDuringCount}×")
                     }.joinToString(" · "),
@@ -301,15 +354,16 @@ private fun ExerciseTypesCard(r: AnalysisReport) {
 
 @Composable
 private fun ExerciseListCard(items: List<ExerciseGlucose>) {
+    val u = LocalGlucoseUnit.current
     var all by remember { mutableStateOf(false) }
     val fmt = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
     SectionCard("Einzelne Trainings", Icons.Filled.DirectionsRun, subtitle = "Kurve bis 12 h danach, grau = Training") {
         (if (all) items else items.take(5)).forEach { e ->
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("${fmt.format(Date(e.start.toEpochMilli()))} · ${e.typeName}", style = MaterialTheme.typography.labelLarge)
-                val during = if (e.startMgdl != null && e.endMgdl != null) "${e.startMgdl} → ${e.endMgdl} mg/dl" else "keine CGM-Werte"
+                val during = if (e.startMgdl != null && e.endMgdl != null) "${u.value(e.startMgdl)} → ${u.withUnit(e.endMgdl)}" else "keine CGM-Werte"
                 Text(
-                    listOfNotNull(during, e.minAfter?.let { "Tiefstwert danach $it" }, if (e.hypoAfter || e.hypoDuring) "Hypo" else null)
+                    listOfNotNull(during, e.minAfter?.let { "Tiefstwert danach ${u.value(it)}" }, if (e.hypoAfter || e.hypoDuring) "Hypo" else null)
                         .joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = if (e.hypoAfter || e.hypoDuring) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -328,6 +382,7 @@ private fun ExerciseListCard(items: List<ExerciseGlucose>) {
 
 @Composable
 private fun NightListCard(nights: List<NightGlucose>) {
+    val u = LocalGlucoseUnit.current
     var all by remember { mutableStateOf(false) }
     val fmt = DateFormat.getDateInstance(DateFormat.SHORT)
     SectionCard("Einzelne Nächte", Icons.Filled.Bedtime) {
@@ -339,11 +394,11 @@ private fun NightListCard(nights: List<NightGlucose>) {
                     if (n.values < 12) "zu wenige CGM-Werte"
                     else buildList {
                         n.timeInRange?.let { add("im Ziel $it %") }
-                        add("${n.min}–${n.max} mg/dl")
+                        add("${u.value(n.min!!)}–${u.withUnit(n.max!!)}")
                         if (n.hypoEvents > 0) {
                             add("${n.hypoEvents} Hypo" + if (n.compressionEvents > 0) " (${n.compressionEvents} Kompr.-Verdacht)" else "")
                         }
-                        n.dawnRise?.let { add("morgens ${signed(it)}") }
+                        n.dawnRise?.let { add("morgens ${u.delta(it)}") }
                         n.deepPercent?.let { add("Tiefschlaf $it %") }
                     }.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
@@ -355,7 +410,7 @@ private fun NightListCard(nights: List<NightGlucose>) {
                             add(String.format(java.util.Locale.GERMANY, "%.1f IE", e.insulin))
                             if (e.carbs > 0) add("${e.carbs.toInt()} g KH")
                             e.lastManualBolusBeforeSleep?.let { add("letzter Bolus ${hm(it)} vor dem Schlafen") }
-                            e.tempTargetMgdl?.let { add("Ziel $it" + (e.tempTargetReason?.let { r -> " ($r)" } ?: "")) }
+                            e.tempTargetMgdl?.let { add("Ziel ${u.value(it)}" + (e.tempTargetReason?.let { r -> " ($r)" } ?: "")) }
                         }.joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -366,7 +421,5 @@ private fun NightListCard(nights: List<NightGlucose>) {
         if (nights.size > 5) TextButton(onClick = { all = !all }) { Text(if (all) "Weniger anzeigen" else "Alle ${nights.size} anzeigen") }
     }
 }
-
-private fun signed(v: Int) = if (v > 0) "+$v" else "$v"
 
 private fun hm(minutes: Long) = if (minutes >= 60) "${minutes / 60} h ${minutes % 60} min" else "$minutes min"

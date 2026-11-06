@@ -1,5 +1,6 @@
 package de.nbeck.aapshc.sync
 
+import de.nbeck.aapshc.GlucoseUnit
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
@@ -19,35 +20,42 @@ object CsvExport {
         "Letzter Bolus vor Schlaf (min)", "Temp. Ziel beim Einschlafen",
     )
 
-    fun build(report: AnalysisReport, zone: ZoneId = ZoneId.systemDefault()): String {
+    fun build(report: AnalysisReport, zone: ZoneId = ZoneId.systemDefault(), unit: GlucoseUnit = GlucoseUnit.MGDL): String {
         val fmt = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm").withZone(zone)
         fun t(i: Instant) = fmt.format(i)
         fun minutes(a: Instant, b: Instant) = Duration.between(a, b).toMinutes().toString()
-        val rows = mutableListOf(HEADER)
+        fun Int?.g() = this?.let { unit.value(it) }.orEmpty()
+        fun Int?.gd() = this?.let { unit.delta(it).replace("−", "-") }.orEmpty()
+        val rows = mutableListOf(HEADER.map { if (it in GLUCOSE_COLUMNS) "$it (${unit.label})" else it })
         report.items.sortedBy { it.start }.forEach { e ->
             rows += listOf(
                 "Training", t(e.start), t(e.end), e.typeName, minutes(e.start, e.end),
-                e.startMgdl.s(), e.endMgdl.s(), e.minDuring.s(), "", "",
+                e.startMgdl.g(), e.endMgdl.g(), e.minDuring.g(), "", "",
                 "", "", "", if (e.hypoDuring || e.hypoAfter) "ja" else "nein", "",
-                "", "", e.minAfter.s(),
+                "", "", e.minAfter.g(),
                 "", "", "", "", "", "",
             )
         }
         report.nights.sortedBy { it.start }.forEach { n ->
             rows += listOf(
                 "Nacht", t(n.start), t(n.end), "Schlaf", n.sleepMinutes.toString(),
-                n.curve.firstOrNull()?.mgdl.s(), n.curve.lastOrNull()?.mgdl.s(), n.min.s(), n.max.s(), n.avg.s(),
+                n.curve.firstOrNull()?.mgdl.g(), n.curve.lastOrNull()?.mgdl.g(), n.min.g(), n.max.g(), n.avg.g(),
                 n.timeInRange.s(), n.minutesBelow.toString(), n.minutesAbove.toString(), if (n.hadRealHypo) "ja" else "nein",
-                n.dawnRise.s(), n.exerciseMinutesBefore.toString(), n.deepPercent.s(), "",
+                n.dawnRise.gd(), n.exerciseMinutesBefore.toString(), n.deepPercent.s(), "",
                 n.hypoEvents.toString(), n.compressionEvents.toString(),
                 n.evening?.insulin?.let { String.format(java.util.Locale.GERMANY, "%.1f", it) }.orEmpty(),
                 n.evening?.carbs?.let { "%.0f".format(it) }.orEmpty(),
                 n.evening?.lastManualBolusBeforeSleep?.toString().orEmpty(),
-                n.evening?.tempTargetMgdl.s(),
+                n.evening?.tempTargetMgdl.g(),
             )
         }
         return BOM + rows.joinToString("\r\n") { row -> row.joinToString(";") { escape(it) } } + "\r\n"
     }
+
+    private val GLUCOSE_COLUMNS = setOf(
+        "Glukose Beginn", "Glukose Ende", "Min", "Max", "Mittel", "Anstieg morgens", "Tiefster Wert 12 h danach",
+        "Temp. Ziel beim Einschlafen",
+    )
 
     /** UTF-8-BOM, damit Excel die Umlaute richtig erkennt. */
     private val BOM = Char(0xFEFF).toString()

@@ -55,5 +55,6 @@ class SyncState(private val file: File) {
         const val STEPS = "steps"
         const val TEMPERATURE = "temperature"
         const val PERIOD = "period"
+        const val VITALS = "vitals"
     }
 }

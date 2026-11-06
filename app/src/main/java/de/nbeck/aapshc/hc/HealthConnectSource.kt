@@ -10,6 +10,8 @@ import androidx.health.connect.client.records.BodyTemperatureRecord
 import androidx.health.connect.client.records.DistanceRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.MenstruationFlowRecord
 import androidx.health.connect.client.records.MenstruationPeriodRecord
 import androidx.health.connect.client.records.Record
@@ -20,6 +22,7 @@ import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import de.nbeck.aapshc.sync.DailySteps
+import de.nbeck.aapshc.sync.DailyVitals
 import de.nbeck.aapshc.sync.ExerciseInfo
 import de.nbeck.aapshc.sync.Health
 import de.nbeck.aapshc.sync.PeriodInfo
@@ -138,6 +141,20 @@ class HealthConnectSource(private val context: Context) {
         }
     }
 
+    /** Tagesmittel von Ruhepuls und HRV (nur die freigegebenen Werte). */
+    suspend fun dailyVitals(from: Instant, to: Instant, granted: Set<String>): List<DailyVitals> {
+        val zone = ZoneId.systemDefault()
+        val hr = if (read(RestingHeartRateRecord::class) in granted) {
+            readAll(RestingHeartRateRecord::class, from, to).groupBy { it.time.atZone(zone).toLocalDate() }
+                .mapValues { (_, l) -> l.map { it.beatsPerMinute.toDouble() }.average() }
+        } else emptyMap()
+        val hrv = if (read(HeartRateVariabilityRmssdRecord::class) in granted) {
+            readAll(HeartRateVariabilityRmssdRecord::class, from, to).groupBy { it.time.atZone(zone).toLocalDate() }
+                .mapValues { (_, l) -> l.map { it.heartRateVariabilityMillis }.average() }
+        } else emptyMap()
+        return (hr.keys + hrv.keys).sorted().map { DailyVitals(it, hr[it], hrv[it]) }
+    }
+
     /** Schrittsumme je Kalendertag (lokale Zeitzone), von [fromDay] bis heute. */
     suspend fun dailySteps(fromDay: LocalDate, now: Instant): List<DailySteps> {
         val zone = ZoneId.systemDefault()
@@ -191,6 +208,8 @@ class HealthConnectSource(private val context: Context) {
             read(TotalCaloriesBurnedRecord::class),
             read(BodyTemperatureRecord::class),
             read(MenstruationFlowRecord::class),
+            read(RestingHeartRateRecord::class),
+            read(HeartRateVariabilityRmssdRecord::class),
             BACKGROUND,
         )
 
@@ -215,6 +234,7 @@ class HealthConnectSource(private val context: Context) {
             "com.xiaomi.wearable" to "Mi Fitness",
             "com.huawei.health" to "Huawei Health",
             "com.strava" to "Strava",
+            "com.whoop.android" to "WHOOP",
             "com.ouraring.oura" to "Oura",
             "com.polar.polarflow" to "Polar Flow",
             "com.suunto.china" to "Suunto",

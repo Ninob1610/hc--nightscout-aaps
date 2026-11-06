@@ -52,6 +52,9 @@ private val DarkChart = ChartColors(
 
 val LocalChartColors = staticCompositionLocalOf { LightChart }
 
+/** Anzeigeeinheit für Glukose; Werte bleiben intern mg/dl. */
+val LocalGlucoseUnit = staticCompositionLocalOf { de.nbeck.aapshc.GlucoseUnit.MGDL }
+
 private val BrandLight = lightColorScheme(
     primary = Color(0xFF1C5CAB),
     secondary = Color(0xFF52606F),

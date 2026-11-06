@@ -21,6 +21,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -52,7 +53,10 @@ private fun MainScreen(vm: MainViewModel = viewModel()) {
     val activity = context as? ComponentActivity
     // Nur in Debug-Builds: adb shell am start -n de.nbeck.aapshc/.ui.MainActivity --ez demo true [--ei tab 1]
     val demo = BuildConfig.DEBUG && activity?.intent?.getBooleanExtra("demo", false) == true
-    if (demo) vm.enableDemo()
+    if (demo) {
+        vm.enableDemo()
+        if (activity?.intent?.getBooleanExtra("pdf", false) == true) LaunchedEffect(Unit) { vm.exportDemoPdf() }
+    }
     val s by vm.state.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
 
@@ -88,13 +92,15 @@ private fun MainScreen(vm: MainViewModel = viewModel()) {
         },
     ) { padding ->
         val modifier = Modifier.padding(padding)
-        if (tab == 1) {
-            AnalysisScreen(s, vm, modifier)
-        } else {
-            SyncScreen(s, vm, modifier) {
-                val wanted = if (s.backgroundSupported) HealthConnectSource.ALL_PERMISSIONS
-                else HealthConnectSource.ALL_PERMISSIONS - HealthConnectSource.BACKGROUND
-                permissionLauncher.launch(wanted)
+        CompositionLocalProvider(LocalGlucoseUnit provides s.glucoseUnit) {
+            if (tab == 1) {
+                AnalysisScreen(s, vm, modifier)
+            } else {
+                SyncScreen(s, vm, modifier) {
+                    val wanted = if (s.backgroundSupported) HealthConnectSource.ALL_PERMISSIONS
+                    else HealthConnectSource.ALL_PERMISSIONS - HealthConnectSource.BACKGROUND
+                    permissionLauncher.launch(wanted)
+                }
             }
         }
     }

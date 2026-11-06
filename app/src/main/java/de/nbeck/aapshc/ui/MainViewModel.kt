@@ -11,6 +11,7 @@ import de.nbeck.aapshc.sync.AnalysisReport
 import de.nbeck.aapshc.sync.AnalysisRunner
 import de.nbeck.aapshc.sync.BedtimeWorker
 import de.nbeck.aapshc.sync.CsvExport
+import de.nbeck.aapshc.sync.PdfReport
 import de.nbeck.aapshc.sync.WeeklyReportWorker
 import de.nbeck.aapshc.sync.PostSync
 import de.nbeck.aapshc.sync.SyncEngine
@@ -47,12 +48,14 @@ data class UiState(
     val syncFever: Boolean = false,
     val syncCycle: Boolean = false,
     val heartRateZones: Boolean = true,
+    val syncVitals: Boolean = false,
     val maxHeartRate: Int = 190,
     val notifyHypoRisk: Boolean = true,
     val hypoRiskMinutes: Int = 45,
     val notifyErrors: Boolean = true,
     val weeklyReport: Boolean = true,
     val bedtimeHint: Boolean = true,
+    val glucoseUnit: de.nbeck.aapshc.GlucoseUnit = de.nbeck.aapshc.GlucoseUnit.MGDL,
     val analysisDays: Long = 30,
     val analysis: AnalysisReport? = null,
     val analysisBusy: Boolean = false,
@@ -93,12 +96,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             syncFever = settings.syncFever,
             syncCycle = settings.syncCycle,
             heartRateZones = settings.heartRateZones,
+            syncVitals = settings.syncVitals,
             maxHeartRate = settings.maxHeartRate,
             notifyHypoRisk = settings.notifyHypoRisk,
             hypoRiskMinutes = settings.hypoRiskMinutes,
             notifyErrors = settings.notifyErrors,
             weeklyReport = settings.weeklyReport,
             bedtimeHint = settings.bedtimeHint,
+            glucoseUnit = settings.glucoseUnit,
         )
         refresh()
     }
@@ -136,10 +141,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun onFever(v: Boolean) = save { it.copy(syncFever = v) }
     fun onCycle(v: Boolean) = save { it.copy(syncCycle = v) }
     fun onHeartRateZones(v: Boolean) = save { it.copy(heartRateZones = v) }
+    fun onVitals(v: Boolean) = save { it.copy(syncVitals = v) }
     fun onMaxHeartRate(v: Int) = save { it.copy(maxHeartRate = v) }
     fun onNotifyHypoRisk(v: Boolean) = save { it.copy(notifyHypoRisk = v) }
     fun onHypoRiskMinutes(v: Int) = save { it.copy(hypoRiskMinutes = v) }
     fun onNotifyErrors(v: Boolean) = save { it.copy(notifyErrors = v) }
+    fun onGlucoseUnit(v: de.nbeck.aapshc.GlucoseUnit) = save { it.copy(glucoseUnit = v) }
     fun onBedtimeHint(v: Boolean) {
         save { it.copy(bedtimeHint = v) }
         BedtimeWorker.schedule(getApplication())
@@ -176,12 +183,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         settings.syncFever = s.syncFever
         settings.syncCycle = s.syncCycle
         settings.heartRateZones = s.heartRateZones
+        settings.syncVitals = s.syncVitals
         settings.maxHeartRate = s.maxHeartRate
         settings.notifyHypoRisk = s.notifyHypoRisk
         settings.hypoRiskMinutes = s.hypoRiskMinutes
         settings.notifyErrors = s.notifyErrors
         settings.weeklyReport = s.weeklyReport
         settings.bedtimeHint = s.bedtimeHint
+        settings.glucoseUnit = s.glucoseUnit
         SyncWorker.schedule(getApplication())
     }
 
@@ -223,7 +232,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
         _state.update { it.copy(analysisBusy = true, analysisError = null, analysisDays = days) }
         runCatching { AnalysisRunner(getApplication()).run(days) }
-            .onSuccess { report -> _state.update { it.copy(analysis = report, analysisBusy = false) } }
+            .onSuccess { report ->
+                _state.update { it.copy(analysis = report, analysisBusy = false) }
+                NightWidget.refresh(getApplication())
+            }
             .onFailure { e -> _state.update { it.copy(analysisBusy = false, analysisError = e.message ?: e.javaClass.simpleName) } }
     }
 
@@ -233,13 +245,36 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val result = runCatching {
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 getApplication<Application>().contentResolver.openOutputStream(uri)?.use {
-                    it.write(CsvExport.build(report).toByteArray(Charsets.UTF_8))
+                    it.write(CsvExport.build(report, unit = settings.glucoseUnit).toByteArray(Charsets.UTF_8))
                 } ?: error("Datei konnte nicht geöffnet werden")
             }
         }
         _state.update {
             it.copy(analysisError = result.exceptionOrNull()?.let { e -> "Export fehlgeschlagen: ${e.message}" })
         }
+    }
+
+    /** Schreibt die aktuelle Auswertung als PDF-Bericht in die vom Nutzer gewählte Datei. */
+    fun exportPdf(uri: android.net.Uri) = viewModelScope.launch {
+        val report = _state.value.analysis ?: return@launch
+        val result = runCatching {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use {
+                    PdfReport(report, _state.value.glucoseUnit).write(it)
+                } ?: error("Datei konnte nicht geöffnet werden")
+            }
+        }
+        _state.update {
+            it.copy(analysisError = result.exceptionOrNull()?.let { e -> "PDF fehlgeschlagen: ${e.message}" })
+        }
+    }
+
+    /** Nur Debug/Demo: PDF ohne Dateiauswahl in den App-Cache schreiben (abholen per `adb exec-out run-as … cat`). */
+    fun exportDemoPdf() = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        if (!demo) return@launch
+        val report = _state.value.analysis ?: return@launch
+        val dir = getApplication<Application>().cacheDir
+        java.io.File(dir, "demo-bericht.pdf").outputStream().use { PdfReport(report, _state.value.glucoseUnit).write(it) }
     }
 
     fun dismissMessage() = _state.update { it.copy(message = null) }

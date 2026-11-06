@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.health.connect.client.records.BodyTemperatureRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.MenstruationFlowRecord
+import androidx.health.connect.client.records.RestingHeartRateRecord
 import androidx.health.connect.client.records.Record
 import androidx.health.connect.client.records.SleepSessionRecord
 import androidx.health.connect.client.records.StepsRecord
@@ -153,6 +154,19 @@ class SyncEngine(context: Context) {
             }
         }
 
+        if (settings.syncVitals) {
+            require(RestingHeartRateRecord::class, "Ruhepuls")
+            // 14 Tage Vorlauf für den persönlichen Normalwert.
+            val vitals = source.dailyVitals(from.minus(Duration.ofDays(15)), now, granted)
+            val feverDays = if (HealthConnectSource.read(BodyTemperatureRecord::class) in granted) {
+                source.readFever(from.minus(Duration.ofDays(1)), now).map { it.time.atZone(ZoneId.systemDefault()).toLocalDate() }.toSet()
+            } else emptySet()
+            val firstDay = from.atZone(ZoneId.systemDefault()).toLocalDate().plusDays(1)
+            for (alert in Vitals.alerts(vitals, feverDays).filter { !it.day.isBefore(firstDay) }) {
+                desired[Mapper.identifierFor("vitals:${alert.day}")] = SyncState.VITALS to Pending(Vitals.treatment(alert, now = now), 0)
+            }
+        }
+
         if (settings.syncSteps) {
             require(StepsRecord::class, "Schritte")
             val zone = ZoneId.systemDefault()
@@ -202,6 +216,7 @@ class SyncEngine(context: Context) {
                     if (settings.syncSleep) add(SyncState.SLEEP)
                     if (settings.syncFever) add(SyncState.TEMPERATURE)
                     if (settings.syncCycle) add(SyncState.PERIOD)
+                    if (settings.syncVitals) add(SyncState.VITALS)
                 }
                 val safeFrom = from.plus(Duration.ofDays(1)).toEpochMilli()
                 val gone = state.entries.filter { (id, e) ->

@@ -53,6 +53,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("sync_cycle", false)
         set(value) = prefs.edit { putBoolean("sync_cycle", value) }
 
+    /** Notiz bei deutlich erhöhtem Ruhepuls / gesunkener HRV (möglicher Infekt). */
+    var syncVitals: Boolean
+        get() = prefs.getBoolean("sync_vitals", false)
+        set(value) = prefs.edit { putBoolean("sync_vitals", value) }
+
     var heartRateZones: Boolean
         get() = prefs.getBoolean("hr_zones", true)
         set(value) = prefs.edit { putBoolean("hr_zones", value) }
@@ -81,6 +86,10 @@ class Settings(context: Context) {
     var typicalBedtimeMinutes: Int
         get() = prefs.getInt("typical_bedtime", 22 * 60 + 30)
         set(value) = prefs.edit { putInt("typical_bedtime", value) }
+
+    var glucoseUnit: GlucoseUnit
+        get() = runCatching { GlucoseUnit.valueOf(prefs.getString("glucose_unit", "MGDL")!!) }.getOrDefault(GlucoseUnit.MGDL)
+        set(value) = prefs.edit { putString("glucose_unit", value.name) }
 
     var weeklyReport: Boolean
         get() = prefs.getBoolean("weekly_report", true)
@@ -160,6 +169,34 @@ class Settings(context: Context) {
 
     val isNightscoutConfigured: Boolean
         get() = nsUrl.startsWith("http") && nsToken.isNotBlank()
+
+    /** Kurzfassung der letzten Nacht für das Widget. */
+    var lastNight: NightSnapshot?
+        get() = runCatching {
+            val o = JSONObject(prefs.getString("last_night", null) ?: return null)
+            NightSnapshot(
+                start = o.getLong("start"), end = o.getLong("end"),
+                timeInRange = o.optInt("tir", -1).takeIf { it >= 0 },
+                hypoEvents = o.getInt("hypo"), compressionEvents = o.getInt("compr"),
+                sleepMinutes = o.getLong("sleep"),
+            )
+        }.getOrNull()
+        set(value) = prefs.edit {
+            if (value == null) remove("last_night") else putString(
+                "last_night",
+                JSONObject().put("start", value.start).put("end", value.end).put("tir", value.timeInRange ?: -1)
+                    .put("hypo", value.hypoEvents).put("compr", value.compressionEvents).put("sleep", value.sleepMinutes).toString(),
+            )
+        }
+
+    data class NightSnapshot(
+        val start: Long,
+        val end: Long,
+        val timeInRange: Int?,
+        val hypoEvents: Int,
+        val compressionEvents: Int,
+        val sleepMinutes: Long,
+    )
 
     data class LogEntry(val at: Long, val action: String, val text: String)
 

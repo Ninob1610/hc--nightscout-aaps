@@ -23,9 +23,22 @@ data class AnalysisReport(
     val deepSleep: List<NightSummary> = NightAnalysis.byDeepSleep(nights),
     val factors: NightFactors.Comparison? = NightFactors.compare(nights),
     val hypoHours: List<NightFactors.HourCount> = NightFactors.hypoStartHours(nights),
+    val targetEffect: NightFactors.TargetEffect? = NightFactors.tempTargetEffect(nights),
     /** Ob Bolus/KH/Ziele gelesen werden durften (sonst fehlt der Abend-Kontext). */
     val therapyKnown: Boolean = false,
-)
+    val vitals: List<DailyVitals> = emptyList(),
+    val vitalsAlerts: List<VitalsAlert> = emptyList(),
+) {
+    /** Nächte, die am Abend eines auffälligen Tages begannen, gegen die übrigen. */
+    fun nightsAfterAlerts(zone: java.time.ZoneId = java.time.ZoneId.systemDefault()): List<NightSummary> {
+        if (vitalsAlerts.isEmpty()) return emptyList()
+        val days = vitalsAlerts.map { it.day }.toSet()
+        val usable = nights.filter { it.values >= 12 }
+        val (after, other) = usable.partition { it.start.atZone(zone).toLocalDate() in days }
+        if (after.isEmpty() || other.isEmpty()) return emptyList()
+        return listOf(NightAnalysis.summary("Nach auffälligem Tag", after), NightAnalysis.summary("Übrige Nächte", other))
+    }
+}
 
 /**
  * Verknüpft Trainings aus Health Connect mit den CGM-Werten aus Nightscout.
@@ -55,8 +68,14 @@ class AnalysisRunner(context: Context) {
         val therapyKnown = ns.canReadTreatments()
         val nights = nights(ns, sessions, now.minus(Duration.ofDays(days)), now, therapyKnown)
         BedtimeRisk.typicalBedtime(nights)?.let { settings.typicalBedtimeMinutes = it }
+        nights.maxByOrNull { it.end }?.let { WidgetData.store(settings, it) }
+        val granted = source.grantedPermissions()
+        val vitals = source.dailyVitals(now.minus(Duration.ofDays(days + 15)), now, granted)
+        val periodStart = now.minus(Duration.ofDays(days)).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
         return AnalysisReport(
             items, Analysis.summarize(items), nights, NightAnalysis.summarize(nights), days, therapyKnown = therapyKnown,
+            vitals = vitals.filter { !it.day.isBefore(periodStart) },
+            vitalsAlerts = Vitals.alerts(vitals).filter { !it.day.isBefore(periodStart) },
         )
     }
 
@@ -92,6 +111,24 @@ class AnalysisRunner(context: Context) {
                 therapy = therapy,
             )
         }.sortedByDescending { it.start }
+    }
+
+    /**
+     * Wertet nur die zuletzt beendete Schlafsitzung aus (für das Widget). Liefert null ohne Schlafdaten
+     * oder ohne Leserecht auf CGM-Werte.
+     */
+    suspend fun lastNight(now: Instant): NightGlucose? {
+        if (HealthConnectSource.read(SleepSessionRecord::class) !in source.grantedPermissions()) return null
+        val ns = NightscoutClient(settings.nsUrl, settings.nsToken)
+        if (!ns.canReadEntries()) return null
+        val sleep = source.readSleep(now.minus(Duration.ofHours(36)), now)
+            .filter { it.sourcePackage !in settings.excludedSources && Duration.between(it.start, it.end).toHours() >= 3 }
+            .maxByOrNull { it.end } ?: return null
+        val values = ns.glucose(sleep.start.minus(Duration.ofMinutes(30)).toEpochMilli(), sleep.end.plus(Duration.ofMinutes(30)).toEpochMilli())
+        val carbs = if (ns.canReadTreatments()) ns.therapy(sleep.start.toEpochMilli(), sleep.end.toEpochMilli()) else null
+        return NightAnalysis.evaluate(
+            sleep.start, sleep.end, Duration.between(sleep.start, sleep.end).minus(sleep.awake).toMinutes(), values, 0, therapy = carbs,
+        )
     }
 
     /** Kontext des heutigen Abends für den Hinweis vor dem Schlafengehen. */

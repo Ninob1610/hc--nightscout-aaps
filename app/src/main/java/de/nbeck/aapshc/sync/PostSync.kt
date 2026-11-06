@@ -16,6 +16,7 @@ object PostSync {
         val settings = Settings(context)
         settings.consecutiveFailures = 0
         Notifier.clearSyncFailed(context)
+        updateWidget(context, settings)
         if (!settings.notifyHypoRisk) return
         val now = Instant.now()
         result.newExercises
@@ -28,6 +29,16 @@ object PostSync {
             }
     }
 
+    /** Neue Nacht für das Widget nur einmal nach dem Aufwachen berechnen, sonst nur die Sync-Zeit auffrischen. */
+    private suspend fun updateWidget(context: Context, settings: Settings) {
+        val known = settings.lastNight
+        val now = Instant.now()
+        if (known == null || now.toEpochMilli() - known.end > Duration.ofHours(20).toMillis()) {
+            runCatching { AnalysisRunner(context).lastNight(now) }.getOrNull()?.let { WidgetData.store(settings, it) }
+        }
+        de.nbeck.aapshc.ui.NightWidget.refresh(context)
+    }
+
     /** Nur aus dem Hintergrund aufrufen; im Vordergrund sieht man den Fehler ohnehin. */
     fun onBackgroundFailure(context: Context, error: Throwable) {
         val settings = Settings(context)
@@ -38,5 +49,6 @@ object PostSync {
         val notify = if (error is NightscoutAuthException || error is SyncException) failures == 1
         else failures == FAILURES_BEFORE_NOTICE
         if (notify) Notifier.syncFailed(context, error.message ?: error.javaClass.simpleName)
+        de.nbeck.aapshc.ui.NightWidget.refresh(context)
     }
 }

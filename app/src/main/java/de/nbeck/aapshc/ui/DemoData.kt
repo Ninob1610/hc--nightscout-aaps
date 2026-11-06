@@ -111,9 +111,21 @@ object DemoData {
                 deepMinutes = sleepMinutes * rnd.nextLong(10, 24) / 100, therapy = therapy,
             )
         }
+        // Ruhepuls/HRV mit einer kleinen „Erkältung“ vor 10 Tagen.
+        val vitals = (days + 15 downTo 0).map { d ->
+            val sick = d in 8..10
+            de.nbeck.aapshc.sync.DailyVitals(
+                today.minusDays(d.toLong()),
+                restingHr = 54 + rnd.nextDouble(-2.0, 2.0) + if (sick) 8.0 else 0.0,
+                hrvMs = 44 + rnd.nextDouble(-5.0, 5.0) - if (sick) 16.0 else 0.0,
+            )
+        }
+        val periodStart = today.minusDays(days.toLong())
         return AnalysisReport(
             items.sortedByDescending { it.start }, Analysis.summarize(items),
             nights.sortedByDescending { it.start }, NightAnalysis.summarize(nights), days.toLong(), therapyKnown = true,
+            vitals = vitals.filter { !it.day.isBefore(periodStart) },
+            vitalsAlerts = de.nbeck.aapshc.sync.Vitals.alerts(vitals).filter { !it.day.isBefore(periodStart) },
         )
     }
 

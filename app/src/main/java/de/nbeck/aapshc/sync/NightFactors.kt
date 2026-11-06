@@ -53,6 +53,42 @@ object NightFactors {
         return Comparison(hypo.size, other.size, factors)
     }
 
+    /** AAPS-Gründe, bei denen das Ziel eine Reaktion auf fallende Werte ist, keine Planung. */
+    private val REACTIVE_REASONS = setOf("Automation", "Hypo")
+
+    fun plannedTarget(e: EveningContext?) = e?.tempTargetMgdl != null && e.tempTargetReason !in REACTIVE_REASONS
+    fun reactiveTarget(e: EveningContext?) = e?.tempTargetMgdl != null && e.tempTargetReason in REACTIVE_REASONS
+
+    data class TargetEffect(val groups: List<NightSummary>, val reactiveNights: Int, val afterSport: Boolean)
+
+    /**
+     * Wirkt ein geplantes temporäres Ziel (z. B. „Activity“)? Vergleicht bevorzugt Nächte nach Sport mit
+     * und ohne Ziel, sonst alle Nächte. Ziele aus Automationen oder wegen Hypo bleiben außen vor.
+     */
+    fun tempTargetEffect(nights: List<NightGlucose>): TargetEffect? {
+        val usable = nights.filter { it.values >= 12 && it.evening != null }
+        val reactive = usable.count { reactiveTarget(it.evening) }
+        val candidates = usable.filterNot { reactiveTarget(it.evening) }
+        fun split(list: List<NightGlucose>) = list.partition { plannedTarget(it.evening) }
+        val sport = candidates.filter { it.exerciseMinutesBefore >= SPORT_MINUTES }
+        val (sportWith, sportWithout) = split(sport)
+        if (sportWith.size >= MIN_GROUP && sportWithout.size >= MIN_GROUP) {
+            return TargetEffect(
+                listOf(
+                    NightAnalysis.summary("Nach Sport mit geplantem Ziel", sportWith),
+                    NightAnalysis.summary("Nach Sport ohne Ziel", sportWithout),
+                ),
+                reactive, afterSport = true,
+            )
+        }
+        val (with, without) = split(candidates)
+        if (with.size < MIN_GROUP || without.size < MIN_GROUP) return null
+        return TargetEffect(
+            listOf(NightAnalysis.summary("Mit geplantem Ziel", with), NightAnalysis.summary("Ohne Ziel", without)),
+            reactive, afterSport = false,
+        )
+    }
+
     /** Beginn echter nächtlicher Hypos je Uhrzeit (Stunde 0–23), getrennt von Kompressions-Verdacht. */
     data class HourCount(val hour: Int, val real: Int, val compression: Int)
 

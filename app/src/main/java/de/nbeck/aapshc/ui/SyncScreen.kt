@@ -40,6 +40,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,6 +84,7 @@ fun SyncScreen(s: UiState, vm: MainViewModel, modifier: Modifier, requestPermiss
         DataCard(s, vm)
         AutomationCard(s, vm)
         NotificationCard(s, vm)
+        DisplayCard(s, vm)
         if (s.knownSources.isNotEmpty()) SourcesCard(s, vm)
         if (s.activityLog.isNotEmpty()) LogCard(s)
         Banner(
@@ -165,6 +169,8 @@ private fun HealthConnectCard(s: UiState, context: Context, requestPermissions: 
                     PermissionChip("Puls", HealthConnectSource.read(HeartRateRecord::class) in s.granted)
                     if (s.syncFever) PermissionChip("Temperatur", HealthConnectSource.read(BodyTemperatureRecord::class) in s.granted)
                     if (s.syncCycle) PermissionChip("Zyklus", HealthConnectSource.read(MenstruationFlowRecord::class) in s.granted)
+                    if (s.syncVitals) PermissionChip("Ruhepuls", HealthConnectSource.read(androidx.health.connect.client.records.RestingHeartRateRecord::class) in s.granted)
+                    if (s.syncVitals) PermissionChip("HRV", HealthConnectSource.read(androidx.health.connect.client.records.HeartRateVariabilityRmssdRecord::class) in s.granted)
                     if (s.backgroundSupported) PermissionChip("Hintergrund", HealthConnectSource.BACKGROUND in s.granted)
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -228,6 +234,7 @@ private fun DataCard(s: UiState, vm: MainViewModel) {
         SwitchRow("Tages-Schritte", s.syncSteps, vm::onSteps, "Notiz am Tagesende")
         SwitchRow("Fieber ab 37,5 °C", s.syncFever, vm::onFever, "Notiz, weil der Insulinbedarf steigen kann")
         SwitchRow("Periode", s.syncCycle, vm::onCycle, "Notiz mit Dauer")
+        SwitchRow("Ruhepuls und HRV", s.syncVitals, vm::onVitals, "Notiz nur bei deutlicher Abweichung vom Normalwert (möglicher Infekt)")
         HorizontalDivider()
         SwitchRow("Duplikate zusammenführen", s.mergeDuplicates, vm::onMergeDuplicates, "gleiches Training aus mehreren Apps nur einmal")
         LabeledSlider("Abgleich: letzte ${s.lookbackDays} Tage", s.lookbackDays.toFloat(), 1f..30f, 28) { vm.onLookback(it.roundToInt()) }
@@ -263,6 +270,21 @@ private fun NotificationCard(s: UiState, vm: MainViewModel) {
         )
         SwitchRow("Wochenbericht", s.weeklyReport, vm::onWeeklyReport, "sonntags 19 Uhr: Nächte, Hypos, Sport")
         SwitchRow("Sync-Fehler melden", s.notifyErrors, vm::onNotifyErrors)
+    }
+}
+
+@Composable
+private fun DisplayCard(s: UiState, vm: MainViewModel) {
+    SectionCard("Anzeige", Icons.Filled.Tune, subtitle = "Einheit in Auswertung, Hinweisen und Export") {
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            de.nbeck.aapshc.GlucoseUnit.entries.forEachIndexed { i, unit ->
+                SegmentedButton(
+                    selected = s.glucoseUnit == unit,
+                    onClick = { vm.onGlucoseUnit(unit) },
+                    shape = SegmentedButtonDefaults.itemShape(i, de.nbeck.aapshc.GlucoseUnit.entries.size),
+                ) { Text(unit.label) }
+            }
+        }
     }
 }
 
