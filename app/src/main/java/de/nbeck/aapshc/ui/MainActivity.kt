@@ -34,6 +34,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import de.nbeck.aapshc.BuildConfig
 import de.nbeck.aapshc.hc.HealthConnectSource
 
 class MainActivity : ComponentActivity() {
@@ -47,8 +48,12 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScreen(vm: MainViewModel = viewModel()) {
-    val s by vm.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val activity = context as? ComponentActivity
+    // Nur in Debug-Builds: adb shell am start -n de.nbeck.aapshc/.ui.MainActivity --ez demo true [--ei tab 1]
+    val demo = BuildConfig.DEBUG && activity?.intent?.getBooleanExtra("demo", false) == true
+    if (demo) vm.enableDemo()
+    val s by vm.state.collectAsStateWithLifecycle()
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refresh() }
 
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -58,12 +63,12 @@ private fun MainScreen(vm: MainViewModel = viewModel()) {
     // Benachrichtigungen (Android 13+) einmalig anfragen, wenn Hinweise eingeschaltet sind.
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && (s.notifyHypoRisk || s.notifyErrors || s.weeklyReport) &&
+        if (!demo && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && (s.notifyHypoRisk || s.notifyErrors || s.weeklyReport) &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable { mutableIntStateOf(if (demo) activity?.intent?.getIntExtra("tab", 0) ?: 0 else 0) }
 
     Scaffold(
         topBar = {

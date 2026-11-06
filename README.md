@@ -1,118 +1,234 @@
 # HC → AAPS
 
-Android-App, die Aktivitäten aus **Health Connect** als Behandlungen in **Nightscout** schreibt,
-sodass **AAPS 4** (NSClient v3) sie in Verlauf und Grafik übernimmt.
+**Trainings, Schlaf und weitere Daten aus Health Connect automatisch in Nightscout – sichtbar in AAPS 4.**
+Dazu eine Auswertung, wie sich Sport und Nächte auf deine Glukose auswirken.
 
-## Was übertragen wird
+[![Lizenz: GPL-3.0](https://img.shields.io/badge/Lizenz-GPL--3.0-blue.svg)](LICENSE)
+![Android 9+](https://img.shields.io/badge/Android-9%2B-3DDC84?logo=android&logoColor=white)
+![Nightscout API v3](https://img.shields.io/badge/Nightscout-API%20v3-1C5CAB)
+![AAPS 4](https://img.shields.io/badge/AAPS-4.0-1C5CAB)
 
-| Health Connect            | Nightscout-Treatment                     | in AAPS 4                   |
-|---------------------------|------------------------------------------|-----------------------------|
-| Trainingseinheit          | `Exercise` mit Dauer, Notiz: Art · km · kcal · Ø/max Puls · Schritte (Quelle) | Therapie-Ereignis „Sport“ |
-| Schlafsitzung             | `Note` mit Dauer, Notiz: Schlafdauer, Tief/REM/wach | Therapie-Ereignis „Notiz“ |
-| Tages-Schritte (optional) | `Note` am Tagesende                      | Therapie-Ereignis „Notiz“   |
-| Körpertemperatur ≥ 37,5 °C (optional) | `Note` „Erhöhte Temperatur …“ | Therapie-Ereignis „Notiz“ |
-| Periode (optional)        | `Note` mit Dauer „Periode, Tag 1–5“      | Therapie-Ereignis „Notiz“   |
+> [!IMPORTANT]
+> **Kein Medizinprodukt.** Die App ist ein privates Open-Source-Projekt ohne Zulassung. Sie schreibt nur
+> Notizen und Sport-Einträge nach Nightscout und gibt Hinweise – sie setzt nie selbst Ziele, Boli oder
+> andere Therapie-Einstellungen in AAPS. Entscheidungen über deine Therapie triffst du, am besten mit
+> deinem Diabetes-Team. Nutzung auf eigene Verantwortung.
 
-In der Trainingsnotiz stehen zusätzlich die Minuten je Pulszone (Z1–Z5, bezogen auf die eingestellte
-maximale Herzfrequenz).
+<p align="center">
+  <img src="docs/screenshots/sync.png" width="250" alt="Sync-Bildschirm mit Status und Freigaben">
+  <img src="docs/screenshots/analysis.png" width="250" alt="Auswertung mit Kennzahlen und Zeit im Zielbereich je Nacht">
+  <img src="docs/screenshots/night.png" width="250" alt="Nachtprofil und Uhrzeit nächtlicher Hypos">
+</p>
+<p align="center">
+  <img src="docs/screenshots/factors.png" width="250" alt="Vergleich: Was vor Hypo-Nächten anders war">
+  <img src="docs/screenshots/exercises.png" width="250" alt="Einzelne Trainings mit Glukosekurve">
+  <img src="docs/screenshots/settings.png" width="250" alt="Einstellungen: was übertragen wird">
+</p>
+<p align="center"><sub>Screenshots mit erfundenen Demo-Daten.</sub></p>
 
-Puls, Distanz, Kalorien und Schritte werden **in die Trainingsnotiz** geschrieben. Als eigene
-Datenreihen liest AAPS 4 Puls und Schritte nicht aus Nightscout ein (nachgesehen im Code von
-AAPS 4.0.0: `NsIncomingDataProcessor` übernimmt nur Treatments wie Therapie-Ereignisse und temporäre Ziele).
+## Inhalt
 
-**Blutzucker aus Health Connect wird nie übertragen.** Die App fordert dafür nicht einmal eine
-Leseberechtigung an.
+- [Funktionen](#funktionen)
+- [Datenschutz](#datenschutz)
+- [Voraussetzungen](#voraussetzungen)
+- [Einrichtung](#einrichtung)
+- [Was nach Nightscout geschrieben wird](#was-nach-nightscout-geschrieben-wird)
+- [Auswertung](#auswertung)
+- [Benachrichtigungen](#benachrichtigungen)
+- [Wie der Sync funktioniert](#wie-der-sync-funktioniert)
+- [Bauen und entwickeln](#bauen-und-entwickeln)
+- [Lizenz](#lizenz)
+
+## Funktionen
+
+**Sync nach Nightscout/AAPS**
+- Trainings mit Distanz, Kalorien, Ø/max Puls, Schritten und Pulszonen
+- Schlaf mit Dauer und Schlafphasen
+- optional Tagesschritte, Fieber ab 37,5 °C und Periode
+- doppelte Einträge mehrerer Apps (z. B. Garmin und Samsung Health) werden zusammengeführt
+- alle 15 min im Hintergrund, optional nur über WLAN und/oder nur beim Laden; Kachel in den Schnelleinstellungen
+
+**Auswertung**
+- Zeit im Zielbereich je Nacht, Nachtprofil (AGP-ähnlich), Sport und Glukose
+- Hypo-Episoden nach internationalem Konsens, Erkennung von Kompressions-Tiefs
+- „Was vor Hypo-Nächten anders war“: Sport, später Bolus, temporäres Ziel, Insulin am Abend
+- Schlafqualität und Glukose, Uhrzeit des Trainings, CSV-Export für die Sprechstunde
+
+**Hinweise** (nur Benachrichtigungen, nie Eingriffe)
+- vor dem Schlafengehen, wenn der Abend früheren Hypo-Nächten ähnelt
+- nach langem Training, Wochenbericht, Sync-Fehler
+
+## Datenschutz
+
+- **Blutzucker aus Health Connect wird nie gelesen oder übertragen.** Die App fragt dafür nicht einmal eine
+  Berechtigung an.
+- Daten gehen **ausschließlich an deine eigene Nightscout-Instanz**. Keine Werbung, keine Analyse-Dienste,
+  keine weiteren Server.
+- Die Auswertung liest CGM-Werte und Behandlungen aus Nightscout und zeigt sie nur in der App an.
+- Das Nightscout-Token wird mit einem Schlüssel aus dem Android Keystore verschlüsselt gespeichert;
+  App-Backups sind abgeschaltet.
+
+## Voraussetzungen
+
+| | |
+|---|---|
+| Android | 9 oder neuer, mit [Health Connect](https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata) (ab Android 14 eingebaut) |
+| Nightscout | Version 15 oder neuer (API v3) |
+| AAPS | getestet mit 4.0.0, NSClient **v3** |
+| Datenquellen | jede App, die nach Health Connect schreibt – z. B. Garmin Connect, Samsung Health, Fitbit, Google Fit, Oura, Withings, Polar |
 
 ## Einrichtung
 
-1. **Nightscout ≥ 15** (API v3). Unter *Admin-Werkzeuge*:
-   - **Neue Rolle** `healthconnect` mit der Berechtigung `api:treatments:*` anlegen.
-   - **Neues Subjekt** `healthconnect` mit der Rolle `healthconnect` anlegen und dessen Zugriffstoken
-     (`healthconnect-1a2b…`) kopieren.
+### 1. Zugriffstoken in Nightscout anlegen
 
-   Die Standardrolle **careportal reicht nicht**: Sie hat nur `api:treatments:create` und Nightscout
-   antwortet beim Aktualisieren und Löschen mit HTTP 403. Gebraucht werden `create`, `update` und `delete`.
-   Das API_SECRET funktioniert mit API v3 nicht. „Verbindung testen“ zeigt fehlende Rechte einzeln an.
-2. App installieren, URL und Token eintragen, **Verbindung testen**.
-3. **Berechtigungen** antippen und Training, Schlaf usw. sowie **Hintergrund-Lesen** erlauben
-   (ohne Hintergrund-Lesen läuft der Sync nur, wenn die App offen ist).
-4. In **AAPS 4**: *Konfiguration → Synchronisierung → NSClient (v3) → Einstellungen → Synchronisierung*:
-   **„Therapie-Ereignisse übernehmen“** einschalten.
+Unter **Admin-Werkzeuge** in deinem Nightscout:
 
-## Funktionsweise
+1. **Neue Rolle** anlegen, z. B. `healthconnect`, mit den Berechtigungen (durch Leerzeichen getrennt):
+   ```
+   api:treatments:* api:entries:read
+   ```
+   `api:treatments:*` braucht der Sync (anlegen, ändern, löschen, lesen), `api:entries:read` nur die Auswertung.
+2. **Neues Subjekt** anlegen, z. B. `healthconnect`, mit dieser Rolle, und dessen **Zugriffstoken** kopieren
+   (sieht aus wie `healthconnect-1a2b3c4d…`).
 
-- Alle 15 Minuten (WorkManager, nur mit Netz; optional nur über WLAN und/oder nur beim Laden) liest die App das Zeitfenster der letzten *n* Tage
-  (Standard 7) aus Health Connect.
-- Jeder Eintrag bekommt einen stabilen `identifier` (UUID aus der Health-Connect-Record-ID) und wird per
-  `PUT /api/v3/treatments/{identifier}` geschrieben. Wiederholte Läufe erzeugen deshalb keine Duplikate.
-- Nur geänderte Einträge werden hochgeladen (Inhalts-Hash in `files/sync_state.json`). Trainings werden
-  48 h lang neu berechnet, weil Uhren Puls und Distanz oft verspätet liefern.
-- In Health Connect gelöschte Einträge werden in Nightscout gelöscht (v3 markiert sie als ungültig,
-  AAPS übernimmt das).
-- Die Schrittnotiz für den laufenden Tag wird höchstens stündlich aktualisiert.
-- Schreiben mehrere Apps dasselbe Training/denselben Schlaf (z. B. Garmin und Samsung Health), wird nur
-  die längste Sitzung übertragen (≥ 50 % Überlappung, verschiedene Apps). Abschaltbar; einzelne
-  Quell-Apps lassen sich ganz ausschließen.
-- Löschst du einen Eintrag in AAPS/Nightscout, antwortet v3 beim nächsten Schreiben mit HTTP 410; die App
-  merkt sich das und legt ihn nicht wieder an.
-- Vor jedem Lauf werden die Token-Rechte geprüft. Fehlt nur `delete`, wird trotzdem hochgeladen, aber nichts gelöscht.
+> [!NOTE]
+> Die Standardrolle **careportal reicht nicht** – sie darf nur anlegen, nicht ändern oder löschen, und
+> Nightscout antwortet dann mit HTTP 403. Das **API_SECRET** funktioniert mit API v3 nicht.
+> „Verbindung testen“ in der App zeigt fehlende Rechte einzeln an.
 
-## Auswertung (Tab „Auswertung“)
+### 2. App einrichten
 
-Verknüpft Trainings und Schlaf der letzten 30 Tage mit den CGM-Werten aus Nightscout. Die Werte werden nur
-gelesen und in der App angezeigt; es wird nichts hochgeladen.
+1. App installieren (siehe [Bauen](#bauen-und-entwickeln)).
+2. Nightscout-URL und Token eintragen, **Verbindung testen**.
+3. **Freigaben** antippen und Training, Schlaf usw. sowie **Hintergrund-Lesen** erlauben.
+   Ohne Hintergrund-Lesen läuft der Sync nur, solange die App geöffnet ist.
 
-Zeitraum wählbar (14, 30 oder 90 Tage). Diagramme zum Antippen:
+### 3. AAPS einstellen
 
-- **Kennzahlen:** Nächte im Ziel, Hypo-Nächte, Sportzeit.
-- **Zeit im Zielbereich je Nacht:** gestapelte Balken unter 70 / 70–180 / über 180 mg/dl.
-- **Nachtprofil:** alle Nächte ab dem Einschlafen übereinandergelegt, Median und mittlere 50 % (wie ein AGP).
-- **Nächte mit und ohne Sport** in den 12 h vor dem Einschlafen im Vergleich.
-- **Schlafqualität und Glukose:** Tiefschlaf-Anteil gegen Ø Nachtglukose (Streudiagramm), dazu ein Vergleich
-  der Nächte mit viel und wenig Tiefschlaf.
-- **Uhrzeit des Trainings:** Anteil der Trainings mit Hypo in den 12 h danach, getrennt nach morgens, mittags,
-  abends und spät.
-- **Je Training und je Nacht** eine kleine Glukosekurve (unterbrochen bei CGM-Lücken), bei Nächten dazu der
-  Abend davor: Insulin inkl. SMB, Kohlenhydrate, letzter selbst ausgelöster Bolus, temporäres Ziel.
-- **Wann nachts Hypos beginnen:** Histogramm nach Uhrzeit. Hypo = mindestens 15 min durchgehend unter 70 mg/dl.
-- **Kompressions-Verdacht:** steiler Abfall (≥ 30 mg/dl in 15 min), schneller Wiederanstieg (≥ 30 mg/dl in
-  20 min), höchstens 90 min und keine Kohlenhydrate in der Zeit – typisch für Liegen auf dem Sensor. Solche
-  Tiefs werden markiert, nicht ausgeblendet, zählen aber nicht für Vergleiche und Hinweise.
-- **Was vor Hypo-Nächten anders war:** Nächte mit echter Hypo gegen die übrigen – Sport, Bolus < 3 h vor dem
-  Einschlafen, temporäres Ziel, Insulin und Kohlenhydrate am Abend. Zeigt Häufungen, keine Ursachen.
-  Braucht `api:treatments:read` (in `api:treatments:*` enthalten).
-- **CSV-Export** (Semikolon, UTF-8 mit BOM, öffnet direkt in Excel/LibreOffice), z. B. für die Sprechstunde.
+*Konfiguration → Synchronisierung → NSClient (v3) → Einstellungen → Synchronisierung:*
+**„Therapie-Ereignisse übernehmen“** einschalten. Danach erscheinen Trainings und Notizen im Verlauf und in der Grafik.
+
+## Was nach Nightscout geschrieben wird
+
+| Health Connect | Nightscout-Treatment | in AAPS 4 |
+|---|---|---|
+| Trainingseinheit | `Exercise` mit Dauer – „Laufen · 8,4 km · 612 kcal · Ø 151 / max 174 bpm · Zonen Z2 9 / Z3 24 / Z4 12 min (Garmin Connect)“ | Sport |
+| Schlafsitzung | `Note` mit Dauer – „Schlaf 7 h 12 min (Tief 1 h 24 min, REM 1 h 41 min, wach 18 min)“ | Notiz |
+| Tagesschritte *(optional)* | `Note` am Tagesende – „Schritte 05.11.: 9.842“ | Notiz |
+| Körpertemperatur ≥ 37,5 °C *(optional)* | `Note` – „Erhöhte Temperatur 38,2 °C (Ohr) – Insulinbedarf kann steigen“ | Notiz |
+| Periode *(optional)* | `Note` mit Dauer – „Periode, Tag 1–5“ | Notiz |
+
+Puls, Distanz und Schritte stehen **in der Trainingsnotiz**: Als eigene Messreihen liest AAPS 4 sie nicht aus
+Nightscout (nur von Wear OS bzw. Garmin direkt).
+
+## Auswertung
+
+Tab **Auswertung**, Zeitraum 14, 30 oder 90 Tage. Diagramme lassen sich antippen, um genaue Werte zu sehen.
+
+| Bereich | Was es zeigt |
+|---|---|
+| Kennzahlen | Nächte im Ziel, Hypo-Nächte (davon nur Kompression), Sportzeit |
+| Zeit im Zielbereich | gestapelte Balken je Nacht: unter 70 / 70–180 / über 180 mg/dl |
+| Nachtprofil | alle Nächte ab dem Einschlafen übereinander – Median und mittlere 50 % |
+| Wann nachts Hypos beginnen | Histogramm nach Uhrzeit, Kompressions-Verdacht getrennt |
+| Was vor Hypo-Nächten anders war | Nächte mit echter Hypo gegen übrige: Sport, Bolus < 3 h vor dem Schlafen, temporäres Ziel, Insulin und Kohlenhydrate am Abend |
+| Nächte mit und ohne Sport | Training in den 12 h vor dem Einschlafen im Vergleich |
+| Schlafqualität | Tiefschlaf-Anteil gegen Ø Nachtglukose |
+| Uhrzeit des Trainings | Anteil mit Hypo in den 12 h danach, morgens/mittags/abends/spät |
+| Einzelne Trainings und Nächte | kleine Glukosekurve, bei Nächten mit dem Abend davor |
+| CSV-Export | alle Werte als Tabelle (Semikolon, UTF-8), öffnet direkt in Excel/LibreOffice |
+
+**Definitionen**
+- **Hypo-Episode:** mindestens 15 min durchgehend unter 70 mg/dl (internationaler Konsens). Einzelne Ausreißer zählen nicht.
+- **Kompressions-Verdacht:** Abfall ≥ 30 mg/dl in 15 min, Wiederanstieg ≥ 30 mg/dl in 20 min, höchstens 90 min,
+  keine Kohlenhydrate in der Zeit – typisch für Liegen auf dem Sensor. Solche Tiefs bleiben sichtbar, zählen aber
+  nicht für Vergleiche und Hinweise.
+- **Abend:** die 6 h vor dem Einschlafen. **Später Bolus:** selbst ausgelöst (kein SMB), weniger als 3 h vor dem Einschlafen.
+
+Die Auswertung zeigt **Häufungen, keine Ursachen.** Ein temporäres Ziel, das eine AAPS-Automation bei fallender
+Glukose setzt, taucht zum Beispiel gehäuft in Hypo-Nächten auf – als Reaktion, nicht als Auslöser.
 
 Die Diagrammfarben (Rot/Blau/Gelb statt Rot/Grün) sind mit einem Palette-Validator geprüft und auch bei
 Rot-Grün-Sehschwäche unterscheidbar; jede Grafik hat eine Legende und die Werte zusätzlich als Text.
 
-Dafür braucht das Token zusätzlich `api:entries:read`, in der Rolle also z. B. `api:treatments:* api:entries:read`.
+## Benachrichtigungen
 
-## Benachrichtigungen und Bedienung
+| Hinweis | Wann |
+|---|---|
+| Vor dem Schlafengehen | etwa 30 min vor deiner gelernten Einschlafzeit, **nur** wenn heute Sport (≥ 30 min) oder ein später Bolus war **und** du nach solchen Abenden deutlich öfter eine echte Hypo-Nacht hattest (≥ 50 % und 20 Prozentpunkte mehr als sonst, je mindestens 3 Nächte) |
+| Nach dem Training | nach einem frisch übertragenen Training ab einstellbarer Dauer (Standard 45 min), mit der eigenen Vorgeschichte |
+| Wochenbericht | sonntags 19 Uhr: Nächte im Ziel (mit Vorwoche), Hypo-Nächte, Sportzeit |
+| Sync-Fehler | sofort bei Token- oder Rechteproblemen, bei Netzwerkfehlern ab dem dritten Fehlschlag in Folge |
 
-- **Hypo-Hinweis nach Training:** nach einem frisch übertragenen Training ab einstellbarer Dauer (Standard
-  45 min). Mit `api:entries:read` steht dabei, wie oft ähnliche Trainings bisher zu einer Hypo führten.
-  Es ist nur ein Hinweis: Die App setzt nie selbst ein Ziel und ändert nichts in AAPS.
-- **Hinweis vor dem Schlafengehen:** etwa 30 min vor der gelernten üblichen Einschlafzeit, aber nur, wenn
-  der heutige Abend ein Merkmal hat (Sport ≥ 30 min, Bolus < 3 h vorher), nach dem du in der eigenen
-  Vorgeschichte deutlich häufiger eine echte Hypo-Nacht hattest (mindestens 50 % und 20 Prozentpunkte mehr
-  als sonst, je mindestens 3 Nächte).
-- **Wochenbericht:** sonntags um 19 Uhr – Nächte im Ziel (mit Vorwoche), Hypo-Nächte, Sportzeit.
-- **Sync-Fehler:** sofort bei Token- oder Berechtigungsproblemen, bei Netzwerkfehlern ab dem dritten Fehlschlag in Folge.
-- **Schnelleinstellungs-Kachel „HC-Sync“:** startet einen Sync sofort.
-- Das Nightscout-Token wird mit einem Schlüssel aus dem Android Keystore verschlüsselt gespeichert.
+Alle Hinweise sind einzeln abschaltbar.
 
-## Bauen
+## Wie der Sync funktioniert
+
+- Bei jedem Lauf wird das Zeitfenster der letzten *n* Tage (Standard 7) aus Health Connect gelesen.
+- Jeder Eintrag bekommt einen stabilen `identifier` (UUID aus der Health-Connect-Record-ID) und wird per
+  `PUT /api/v3/treatments/{identifier}` geschrieben – wiederholte Läufe erzeugen keine Duplikate.
+- Nur geänderte Einträge werden hochgeladen. Trainings werden 48 h lang neu berechnet, weil Uhren Puls und
+  Distanz oft verspätet liefern.
+- In Health Connect gelöschte Einträge werden in Nightscout gelöscht; AAPS übernimmt das.
+- Löschst du einen Eintrag in AAPS oder Nightscout, merkt sich die App das (HTTP 410) und legt ihn nicht neu an.
+- Überlappen sich Sitzungen verschiedener Apps zu mindestens 50 %, wird nur die längste übertragen.
+- Vor jedem Lauf werden die Rechte des Tokens geprüft. Fehlt nur `delete`, wird hochgeladen, aber nichts gelöscht.
+
+<details>
+<summary>Format eines Trainings in Nightscout</summary>
+
+```json
+{
+  "identifier": "8c6f0a6e-…",
+  "eventType": "Exercise",
+  "date": 1762358400000,
+  "created_at": "2026-11-05T16:00:00Z",
+  "utcOffset": 60,
+  "duration": 45,
+  "durationInMilliseconds": 2700000,
+  "notes": "Laufen · 7,3 km · 512 kcal · Ø 148 / max 171 bpm (Garmin Connect)",
+  "enteredBy": "Health Connect",
+  "app": "aaps-health-connect",
+  "isValid": true
+}
+```
+</details>
+
+## Bauen und entwickeln
+
+Benötigt JDK 17+ und das Android SDK (compileSdk 36).
 
 ```bash
-./gradlew :app:assembleDebug
+./gradlew :app:assembleDebug          # APK: app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:testDebugUnitTest      # Unit-Tests
+./gradlew :app:lintDebug              # Lint
 ```
 
-APK: `app/build/outputs/apk/debug/app-debug.apk`. Unit-Tests: `./gradlew :app:testDebugUnitTest`.
+Für eigene Release-Builds einen eigenen Signaturschlüssel verwenden.
 
-## Mögliche Erweiterungen
+**Demo-Modus** (nur Debug-Builds, erfundene Daten – für Screenshots und Vorführungen; es wird nichts
+gespeichert oder synchronisiert):
 
-- Temporäres Ziel „Activity“ während einer laufenden Trainingseinheit. Bewusst weggelassen: Die meisten
-  Apps schreiben Sitzungen erst **nach** dem Ende in Health Connect, und automatisch gesetzte Ziele
-  greifen direkt in die Dosierung ein.
-- Filter nach Quell-App (z. B. nur Garmin).
+```bash
+adb shell am start -n de.nbeck.aapshc/.ui.MainActivity --ez demo true --ei tab 1
+```
+
+**Aufbau**
+
+| Paket | Inhalt |
+|---|---|
+| `hc` | Lesen aus Health Connect |
+| `ns` | Nightscout-API-v3-Client, Rechteprüfung |
+| `sync` | Sync, Abbildung auf Treatments, Auswertungen, Worker, Benachrichtigungen |
+| `ui` | Compose-Oberfläche und Diagramme |
+
+Beiträge sind willkommen – Issues und Pull Requests gern auf Deutsch oder Englisch. Bitte keine echten
+Gesundheitsdaten in Issues, Logs oder Screenshots posten.
+
+## Lizenz
+
+[GNU General Public License v3.0](LICENSE) – du darfst die App nutzen, ändern und weitergeben; veränderte
+Versionen müssen ebenfalls unter der GPL-3.0 offengelegt werden. Ohne Gewährleistung.
+
+„Health Connect“ ist eine Marke von Google. Dieses Projekt steht in keiner Verbindung zu Google, zum
+AndroidAPS- oder zum Nightscout-Projekt.

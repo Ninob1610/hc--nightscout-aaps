@@ -67,6 +67,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(UiState())
     val state: StateFlow<UiState> = _state
 
+    /** Demo-Modus für Screenshots: erfundene Daten, nichts wird gespeichert oder synchronisiert. */
+    private var demo = false
+
+    fun enableDemo() {
+        if (demo) return
+        demo = true
+        _state.value = DemoData.state()
+    }
+
     init {
         _state.value = UiState(
             nsUrl = settings.nsUrl,
@@ -95,10 +104,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refresh() = viewModelScope.launch {
+        if (demo) return@launch
         val availability = source.availability()
         val available = availability == HealthConnectSource.Availability.AVAILABLE
         val granted = if (available) runCatching { source.grantedPermissions() }.getOrDefault(emptySet()) else emptySet()
         val background = available && runCatching { source.isBackgroundReadAvailable() }.getOrDefault(false)
+        if (demo) return@launch // Demo wurde während des Abgleichs eingeschaltet
         _state.update {
             it.copy(
                 availability = availability,
@@ -148,6 +159,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun save(change: (UiState) -> UiState) {
         _state.update(change)
+        if (demo) return
         val s = _state.value
         settings.nsUrl = s.nsUrl
         settings.nsToken = s.nsToken
@@ -173,7 +185,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         SyncWorker.schedule(getApplication())
     }
 
-    fun testConnection() = busy {
+    fun testConnection() = if (demo) busy { "Verbindung OK – Nightscout 15.0.9, Subjekt „healthconnect“, alle Rechte für den Sync vorhanden" } else busy {
         save { it }
         _state.update { it.copy(nsUrl = settings.nsUrl) }
         val info = NightscoutClient(settings.nsUrl, settings.nsToken).testConnection()
@@ -184,7 +196,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         } else "Fehler: Token „${info.subject}“ fehlen Rechte: ${info.missing.joinToString()}"
     }
 
-    fun syncNow() = busy {
+    fun syncNow() = if (demo) busy { "Sync: 0 hochgeladen, 0 gelöscht, 51 unverändert" } else busy {
         save { it }
         try {
             val result = engine.run(background = false)
@@ -205,6 +217,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun runAnalysis(days: Long = _state.value.analysisDays) = viewModelScope.launch {
+        if (demo) {
+            _state.update { it.copy(analysis = DemoData.report(days.toInt()), analysisDays = days) }
+            return@launch
+        }
         _state.update { it.copy(analysisBusy = true, analysisError = null, analysisDays = days) }
         runCatching { AnalysisRunner(getApplication()).run(days) }
             .onSuccess { report -> _state.update { it.copy(analysis = report, analysisBusy = false) } }
