@@ -171,15 +171,10 @@ class SyncEngine(context: Context) {
             require(StepsRecord::class, "Schritte")
             val zone = ZoneId.systemDefault()
             val firstDay = from.atZone(zone).toLocalDate().plusDays(1)
-            val today = now.atZone(zone).toLocalDate()
+            // Nur abgeschlossene Tage: eine Notiz am Tagesende, kein Nachführen des laufenden Tags.
             for (day in source.dailySteps(firstDay, now)) {
                 if (day.steps <= 0) continue
-                val id = Mapper.identifierFor("steps:${day.day}")
-                val prev = state.entries[id]
-                // Den laufenden Tag höchstens stündlich aktualisieren, um AAPS nicht zu fluten.
-                val throttled = day.day == today && prev != null &&
-                    now.toEpochMilli() - prev.uploadedAt < STEPS_INTERVAL.toMillis()
-                desired[id] = SyncState.STEPS to if (throttled) null else Pending(Mapper.steps(day), 0)
+                desired[Mapper.identifierFor("steps:${day.day}")] = SyncState.STEPS to Pending(Mapper.steps(day), 0)
             }
         }
 
@@ -195,7 +190,7 @@ class SyncEngine(context: Context) {
                 if (pending == null) { unchanged++; continue }
                 val prev = state.entries[id]
                 // `date` ist in Nightscout v3 unveränderlich: Einträge, deren Zeitpunkt sich aus „jetzt“
-                // ergibt (Schritte des laufenden Tags, Vitalwerte vor 8 Uhr), behalten den zuerst
+                // ergibt (z. B. Vitalwerte vor 8 Uhr), behalten den zuerst
                 // geschriebenen Zeitpunkt – sonst lehnt Nightscout jedes Update mit HTTP 400 ab.
                 val treatment = if (prev != null && prev.hash != REMOTE_DELETED && prev.date != pending.treatment.date) {
                     pending.treatment.copy(date = prev.date)
@@ -258,7 +253,6 @@ class SyncEngine(context: Context) {
     companion object {
         private val lock = Mutex()
         private val SETTLE_TIME = Duration.ofHours(48)
-        private val STEPS_INTERVAL = Duration.ofMinutes(60)
         private const val REMOTE_DELETED = "remote-deleted"
     }
 }

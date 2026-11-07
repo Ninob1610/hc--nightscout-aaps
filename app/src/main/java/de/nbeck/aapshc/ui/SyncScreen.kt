@@ -231,7 +231,7 @@ private fun DataCard(s: UiState, vm: MainViewModel) {
         }
         HorizontalDivider()
         SwitchRow("Schlaf", s.syncSleep, vm::onSleep, "Notiz mit Dauer, Tief-/REM-Schlaf")
-        SwitchRow("Tages-Schritte", s.syncSteps, vm::onSteps, "Notiz am Tagesende")
+        SwitchRow("Tages-Schritte", s.syncSteps, vm::onSteps, "Notiz am Tagesende, nach Tagesabschluss")
         SwitchRow("Fieber ab 37,5 °C", s.syncFever, vm::onFever, "Notiz, weil der Insulinbedarf steigen kann")
         SwitchRow("Periode", s.syncCycle, vm::onCycle, "Notiz mit Dauer")
         SwitchRow("Ruhepuls und HRV", s.syncVitals, vm::onVitals, "Notiz nur bei deutlicher Abweichung vom Normalwert (möglicher Infekt)")

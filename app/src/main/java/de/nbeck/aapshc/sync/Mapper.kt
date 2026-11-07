@@ -57,7 +57,7 @@ data class PeriodInfo(
 
 data class DailySteps(
     val day: LocalDate,
-    /** Zeitpunkt der Notiz: Tagesende, beim laufenden Tag „jetzt“. */
+    /** Zeitpunkt der Notiz: Tagesende (23:59). */
     val at: Instant,
     val offset: ZoneOffset,
     val steps: Long,

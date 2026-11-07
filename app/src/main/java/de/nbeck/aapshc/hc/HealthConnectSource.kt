@@ -155,15 +155,18 @@ class HealthConnectSource(private val context: Context) {
         return (hr.keys + hrv.keys).sorted().map { DailyVitals(it, hr[it], hrv[it]) }
     }
 
-    /** Schrittsumme je Kalendertag (lokale Zeitzone), von [fromDay] bis heute. */
+    /**
+     * Schrittsumme je abgeschlossenem Kalendertag (lokale Zeitzone), von [fromDay] bis gestern.
+     * Der laufende Tag fehlt bewusst: Nightscout v3 erlaubt kein späteres Ändern von `date`.
+     */
     suspend fun dailySteps(fromDay: LocalDate, now: Instant): List<DailySteps> {
         val zone = ZoneId.systemDefault()
         val today = now.atZone(zone).toLocalDate()
         val out = mutableListOf<DailySteps>()
         var day = fromDay
-        while (!day.isAfter(today)) {
+        while (day.isBefore(today)) {
             val start = day.atStartOfDay(zone).toInstant()
-            val end = if (day == today) now else day.plusDays(1).atStartOfDay(zone).toInstant().minusSeconds(60)
+            val end = day.plusDays(1).atStartOfDay(zone).toInstant().minusSeconds(60)
             val total = client.aggregate(
                 AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(start, end))
             )[StepsRecord.COUNT_TOTAL] ?: 0L

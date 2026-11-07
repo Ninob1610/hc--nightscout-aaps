@@ -120,7 +120,7 @@ Unter **Admin-Werkzeuge** in deinem Nightscout:
 |---|---|---|
 | Trainingseinheit | `Exercise` mit Dauer – „Laufen · 8,4 km · 612 kcal · Ø 151 / max 174 bpm · Zonen Z2 9 / Z3 24 / Z4 12 min (Garmin Connect)“ | Sport |
 | Schlafsitzung | `Note` mit Dauer – „Schlaf 7 h 12 min (Tief 1 h 24 min, REM 1 h 41 min, wach 18 min)“ | Notiz |
-| Tagesschritte *(optional)* | `Note` am Tagesende – „Schritte 05.11.: 9.842“ | Notiz |
+| Tagesschritte *(optional)* | `Note` am Tagesende, erst nach Abschluss des Tages – „Schritte 05.11.: 9.842“ | Notiz |
 | Körpertemperatur ≥ 37,5 °C *(optional)* | `Note` – „Erhöhte Temperatur 38,2 °C (Ohr) – Insulinbedarf kann steigen“ | Notiz |
 | Periode *(optional)* | `Note` mit Dauer – „Periode, Tag 1–5“ | Notiz |
 | Ruhepuls und HRV *(optional)* | `Note` nur bei deutlicher Abweichung – „Ruhepuls erhöht: 62 bpm (sonst 54) · HRV 29 ms (sonst 44) – möglicher Infekt, Insulinbedarf kann steigen“ | Notiz |
