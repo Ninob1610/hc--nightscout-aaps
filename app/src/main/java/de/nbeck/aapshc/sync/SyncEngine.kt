@@ -193,19 +193,25 @@ class SyncEngine(context: Context) {
             for ((id, value) in desired) {
                 val (category, pending) = value
                 if (pending == null) { unchanged++; continue }
-                val hash = pending.treatment.contentHash()
                 val prev = state.entries[id]
+                // `date` ist in Nightscout v3 unveränderlich: Einträge, deren Zeitpunkt sich aus „jetzt“
+                // ergibt (Schritte des laufenden Tags, Vitalwerte vor 8 Uhr), behalten den zuerst
+                // geschriebenen Zeitpunkt – sonst lehnt Nightscout jedes Update mit HTTP 400 ab.
+                val treatment = if (prev != null && prev.hash != REMOTE_DELETED && prev.date != pending.treatment.date) {
+                    pending.treatment.copy(date = prev.date)
+                } else pending.treatment
+                val hash = treatment.contentHash()
                 // Einmal in AAPS/Nightscout gelöschte Einträge nicht immer wieder versuchen.
                 if (prev?.hash == hash || prev?.hash == REMOTE_DELETED) { unchanged++; continue }
-                val result = ns.upsert(pending.treatment)
+                val result = ns.upsert(treatment)
                 val storedHash = if (result == UpsertResult.DELETED_REMOTELY) REMOTE_DELETED else hash
-                state.entries[id] = SyncState.Entry(category, storedHash, pending.treatment.date, pending.modified, now.toEpochMilli())
+                state.entries[id] = SyncState.Entry(category, storedHash, treatment.date, pending.modified, now.toEpochMilli())
                 if (result == UpsertResult.DELETED_REMOTELY) {
                     skippedRemote++
                 } else {
                     uploaded++
                     if (prev == null) pending.exercise?.let { newExercises += it }
-                    log += Settings.LogEntry(now.toEpochMilli(), if (prev == null) "neu" else "aktualisiert", pending.treatment.notes)
+                    log += Settings.LogEntry(now.toEpochMilli(), if (prev == null) "neu" else "aktualisiert", treatment.notes)
                 }
             }
 

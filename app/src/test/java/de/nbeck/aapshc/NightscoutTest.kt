@@ -23,7 +23,7 @@ class NightscoutTest {
     @After
     fun tearDown() = server.shutdown()
 
-    private fun serve(permissions: String, putCode: Int = 201, knownToken: Boolean = true) {
+    private fun serve(permissions: String, putCode: Int = 201, knownToken: Boolean = true, storedDate: Long? = null) {
         server.dispatcher = object : Dispatcher() {
             override fun dispatch(request: RecordedRequest): MockResponse {
                 val path = request.path.orEmpty()
@@ -34,8 +34,12 @@ class NightscoutTest {
                         else MockResponse().setResponseCode(401).setBody("""{"status":401}""")
                     path.startsWith("/api/v3/entries") ->
                         MockResponse().setBody("""{"status":200,"result":[{"date":2000,"sgv":110},{"date":1000,"mbg":95},{"date":3000,"sgv":64}]}""")
+                    request.method == "GET" && storedDate != null && path.startsWith("/api/v3/treatments/") ->
+                        MockResponse().setBody("""{"status":200,"result":{"date":$storedDate,"utcOffset":60}}""")
                     request.method == "PUT" ->
                         if (request.getHeader("Authorization") != "Bearer jwt") MockResponse().setResponseCode(401)
+                        else if (storedDate != null && !request.body.readUtf8().contains("\"date\":$storedDate"))
+                            MockResponse().setResponseCode(400).setBody("""{"status":400,"message":"Field date cannot be modified by the client"}""")
                         else MockResponse().setResponseCode(putCode).setBody("{}")
                     else -> MockResponse().setResponseCode(404)
                 }
@@ -79,6 +83,13 @@ class NightscoutTest {
     fun goneMeansDeletedInAaps() = runTest {
         serve("""["*"]""", putCode = 410)
         assertEquals(UpsertResult.DELETED_REMOTELY, client().upsert(treatment))
+    }
+
+    @Test
+    fun immutableDateIsTakenFromServer() = runTest {
+        serve("""["api:treatments:*"]""", putCode = 200, storedDate = 500L)
+        assertEquals(UpsertResult.WRITTEN, client().upsert(treatment))
+        assertEquals(4, server.requestCount) // Auth, PUT (400), GET, PUT mit Server-date
     }
 
     @Test

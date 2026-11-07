@@ -117,10 +117,32 @@ class NightscoutClient(
     }
 
     suspend fun upsert(treatment: Treatment): UpsertResult = withContext(Dispatchers.IO) {
+        try {
+            put(treatment)
+        } catch (e: NightscoutException) {
+            // v3 verbietet, unveränderliche Felder (date, utcOffset, …) eines bestehenden Dokuments
+            // zu ändern (HTTP 400). Dann mit den Werten vom Server erneut schreiben.
+            if (e is NightscoutAuthException || e.message?.contains(IMMUTABLE_MARKER) != true) throw e
+            val existing = immutableFields(treatment.identifier) ?: throw e
+            put(treatment.copy(date = existing.first, utcOffsetMinutes = existing.second ?: treatment.utcOffsetMinutes))
+        }
+    }
+
+    private fun put(treatment: Treatment): UpsertResult {
         val body = treatment.toJson().toString().toRequestBody(JSON)
         val request = Request.Builder().url(documentUrl(treatment.identifier)).put(body).build()
         val code = execute(request, ignoreCodes = setOf(410)).first
-        if (code == 410) UpsertResult.DELETED_REMOTELY else UpsertResult.WRITTEN
+        return if (code == 410) UpsertResult.DELETED_REMOTELY else UpsertResult.WRITTEN
+    }
+
+    /** date und utcOffset des gespeicherten Dokuments; null, wenn es nicht (mehr) existiert. */
+    private fun immutableFields(identifier: String): Pair<Long, Int?>? {
+        val url = documentUrl(identifier) + "?fields=date,utcOffset"
+        val (code, text) = execute(Request.Builder().url(url).get().build(), ignoreCodes = setOf(404, 410))
+        if (code == 404 || code == 410) return null
+        val o = runCatching { JSONObject(text).optJSONObject("result") }.getOrNull() ?: return null
+        val date = o.optLong("date", 0L).takeIf { it > 0 } ?: return null
+        return date to (if (o.has("utcOffset")) o.optInt("utcOffset") else null)
     }
 
     /** Löscht (in v3: markiert als ungültig, AAPS übernimmt das). Fehlende Dokumente sind kein Fehler. */
@@ -180,6 +202,7 @@ class NightscoutClient(
 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
+        private const val IMMUTABLE_MARKER = "cannot be modified by the client"
         private val defaultHttp = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
